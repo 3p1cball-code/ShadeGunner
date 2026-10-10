@@ -29,7 +29,10 @@ VERSION = "audio-v2"
 
 
 def cache_dir():
-    base = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
+    if os.name == "nt":   # Windows: %LOCALAPPDATA%
+        base = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local")
+    else:
+        base = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
     d = os.path.join(base, "shadegunner", VERSION)
     os.makedirs(d, exist_ok=True)
     return d
@@ -537,6 +540,7 @@ def _write_np(path, st, sr):
 
 def build(d):
     """Alle Klänge erzeugen (läuft im Hilfsprozess). Reihenfolge: wichtig zuerst."""
+    os.makedirs(d, exist_ok=True)
     for name, fn in BASIC.items():
         path = os.path.join(d, name + ".wav")
         if not os.path.exists(path):
@@ -699,10 +703,16 @@ class Audio:
         self.dir = cache_dir()
         if not os.path.exists(os.path.join(self.dir, "DONE")):
             try:
-                self._proc = subprocess.Popen(
-                    [sys.executable, "-m", "shadegunner.audio", "--build", self.dir],
-                    cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                kw = {}
+                if getattr(sys, "frozen", False):     # gepackte .exe: sich selbst aufrufen
+                    cmd = [sys.executable, "--build-audio", self.dir]
+                else:
+                    cmd = [sys.executable, "-m", "shadegunner.audio", "--build", self.dir]
+                    kw["cwd"] = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                if os.name == "nt":
+                    kw["creationflags"] = 0x08000000   # CREATE_NO_WINDOW (kein Konsolen-Blitz)
+                self._proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
+                                              stderr=subprocess.DEVNULL, **kw)
             except Exception as exc:  # noqa: BLE001
                 print(f"[audio] Erzeugung fehlgeschlagen: {exc}")
 

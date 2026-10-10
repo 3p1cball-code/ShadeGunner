@@ -4,9 +4,14 @@ import json
 import os
 
 
+def _base_dir():
+    if os.name == "nt":   # Windows: %APPDATA%
+        return os.environ.get("APPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Roaming")
+    return os.environ.get("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"), ".local", "share")
+
+
 def _path():
-    base = os.environ.get("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"), ".local", "share")
-    return os.path.join(base, "shadegunner", "save.json")
+    return os.path.join(_base_dir(), "shadegunner", "save.json")
 
 
 RANKS = "DCBAS"

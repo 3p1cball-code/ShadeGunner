@@ -60,6 +60,22 @@ Beim ersten Start wird der Soundtrack einmalig (~11 s) nach
 `~/.cache/shadegunner/audio-v2/` erzeugt; danach startet es sofort.
 Abschalten: `SHADEGUNNER_NOSOUND=1`.
 
+## Windows
+
+Zwei Wege:
+
+1. **Aus dem Quelltext** – einmalig `install.bat` (installiert PyQt6 und numpy),
+   danach starten mit `tools\run.bat`.
+2. **Eigenständige `.exe`** (kein Python nötig, der Weg für Steam):
+   `tools\build_windows.bat` baut mit PyInstaller `dist\ShadeGunner\ShadeGunner.exe`.
+   Diesen kompletten Ordner an Steam ausliefern.
+   Wichtig: PyInstaller kann eine Windows-`.exe` **nur auf Windows** erzeugen –
+   der Build muss also auf einem Windows-Rechner laufen (die Spec `shadegunner.spec`
+   liegt bei).
+
+Auf Windows liegen Speicherstand unter `%APPDATA%\shadegunner\` und der
+Klang-Cache unter `%LOCALAPPDATA%\shadegunner\`.
+
 ## Technik
 
 - Interne (Dither-)Auflösung 640×360, wird per CRT/Anzeige hochskaliert.

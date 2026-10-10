@@ -17,6 +17,12 @@ def _set_gl_format():
 
 
 def main():
+    # Im gepackten .exe-Build (PyInstaller) ruft sich das Spiel selbst auf, um den
+    # Soundtrack zu erzeugen - dann ohne Qt/Fenster.
+    if len(sys.argv) >= 3 and sys.argv[1] == "--build-audio":
+        from . import audio
+        audio.build(sys.argv[2])
+        return
     _set_gl_format()
     fullscreen = "--fullscreen" in sys.argv
     app = QApplication(sys.argv)
