@@ -25,12 +25,13 @@ Straße durchqueren (Belt-Scroller)
    → verdächtige NPCs beobachten/scannen (Ressource: Scan-Ladungen)
    → Tells auswerten (Replikant vs. Mensch, mit Restunsicherheit)
    → deaktivieren (Belohnung) | falsch liegen (Suspicion/Strafe)
-   → Skillpunkte → globaler Skillbaum (Tools/Verben, nie Freifahrtschein)
-   → nächste Zone Richtung Tyrell HQ
+   → Auftrag (Quote) erfüllen → Ausgang am Straßenende öffnet sich
+   → Upgrade wählen (1 aus 3, nur für diesen Run) → nächste Zone Richtung Tyrell HQ
 ```
 
-**Run-Struktur:** ein Run = eine Route von Zone 0 (Außenbezirk) bis Zone N
-(Tyrell). Tod/Abbruch beendet den Run; Skills und Freischaltungen bleiben.
+**Run-Struktur:** ein Run = eine Route von Zone 0 (Außenbezirk) bis Zone 4
+(Tyrell). Integrität 0 oder Verdacht 100 % beenden den Run. Persistent ist
+(vorerst) nur der Highscore; ein globaler Skillbaum bleibt eine Option (§7).
 
 ---
 
@@ -44,11 +45,22 @@ und Höhen-Offset. Figuren staffeln sich, man kann *in* der Menge stehen. Pro
 NPC bleibt genug Fläche für Silhouette + einen Tell.
 
 - Achse X: vorwärts/rückwärts durch die Straße
-- Achse Y (Tiefe): vordere/ hintere Bahn (Schritt rein/raus)
-- Achse Z: nur für Parallax-Hintergrund (2–4 Ebenen)
+- Achse Y (Tiefe): vordere/ hintere Bahn (Schritt rein/raus) — echte
+  Zentralperspektive (`persp.py`), Boden Mode-7-artig
+- Achse Z: Sprunghöhe (seit 10.10.2026) — kein Platformer, sondern ein Verb:
+  über Hindernisse, Schlägen und Nexus-Sprungangriffen ausweichen. Der Schatten
+  bleibt am Boden und zeigt die Tiefe.
 
-Höhe (Sprung) gibt es nicht — keine Plattform-Mechanik. Bewegung ist flüssig,
-kein Pixel-Platformer.
+### 3a. Die Straße lebt (Abwechslung ohne neue Regeln)
+
+| Element | Wirkung | Gegenspiel |
+|---|---|---|
+| **Verkehr** auf zwei Fahrspuren (Tiefe 0.32 / 0.74) | Treffer = −1 Integrität, Passanten weichen aus | HUD-Warnung „→ FAHRZEUG“ + Hupe, Spur wechseln |
+| **Hindernisse** neben den Spuren (Absperrung, Kisten, Müll, Feuertonne, Automat) | blockieren den Weg, leuchten teils | springen oder außen herum; flüchtende Replikanten springen drüber |
+| **Polizei-Suchlicht** (Spinner-Patrouille, ab Vorstadt) | Augenreflexe im Lichtkegel werden sichtbar | aber: im Licht kostet ein getöteter Mensch 1,5× Verdacht |
+| **Stromausfall** (Zufall, 9 s) | Lichter aus, Replikantenaugen glühen, Reflexe auf Distanz | Taschenlampe; kurzes Zeitfenster |
+| **Kopfgeld** (HODGE, LEON, ZHORA, PRIS, ROY) | benannter Nexus-6 mit Personenbeschreibung, +400; ab Innenstadt zäh (2 Treffer) und mit Doppelgänger | Beschreibung ist ein Hinweis, kein Beweis |
+| **Sprungangriff** (aggressive Replikanten ab Innenstadt) | Satz auf den Spieler | springen oder Tiefe wechseln |
 
 ---
 
@@ -109,9 +121,13 @@ Tyrell-HQ.
 
 ---
 
-## 7. Skillbaum (persistent, global)
+## 7. Upgrades (pro Run) — Skillbaum (global) zurückgestellt
 
-Beim Deaktivieren von Replikanten und beim sauberen Abschluss einer Zone gibt es
+Umgesetzt: zwischen den Zonen 1 aus 3 Upgrades (Scan-Akku, Schnellscan,
+Tiefenscan, Feldblick, Panzerweste, Laufschuhe, Ruhige Hand, Kaltes Blut,
+Peilsender, Instinkt). Der globale Skillbaum unten ist weiterhin eine Option.
+
+Ursprüngliche Idee: Beim Deaktivieren von Replikanten und beim sauberen Abschluss einer Zone gibt es
 Skillpunkte. Gespeichert wird **global** (`~/.local/share/shadegunner/save.json`),
 nicht pro Run.
 
@@ -130,11 +146,17 @@ Beispielzweige (jeder nur „mehr Werkzeug", nie „Garantie"):
 Alles läuft durch die `asciiplay`-Pipeline:
 
 ```
-3D-Szene (Belt + Parallax)  ->  kleines Offscreen-FBO (Dither-Grid)
-        -> BAYER_FRAG (mode 3, 16-Farben-Palette, Bayer 8×8)
-        -> CRT-Kette (persist, focus, bloom, crt)
-        -> Bildschirm
+CPU (QPainter, 640×360):  Himmel/Wolken -> Suchscheinwerfer -> Skyline fern/mittel
+   (+ Luftstraßen, Billboards) -> Nebelschwaden -> Häuserfront (Läden, Neon + Lichthöfe)
+   -> nasser Boden (Spiegelungen, Lichtkegel) -> Straßennebel -> Figuren/Fahrzeuge/
+   Hindernisse tiefensortiert -> Stromausfall-Schleier -> Scheinwerfer, Suchlicht,
+   Regen (im Lichtkegel hell) -> Glow-Pass (Leuchtschicht)
+GPU:  Grading (S-Kurve, Sättigung, Schwarzpunkt) -> BAYER_FRAG (Palette, 8×8)
+   -> HUD-Overlay (1280×720, ohne Dither) -> CRT-Kette (persist, focus, bloom, crt)
 ```
+
+Palette `noir16`: Index 7 ist seit 10.10.2026 ein dunkles Natrium-Orange statt
+eines Graus — ohne diesen Eintrag ditherte Laternenlicht rot statt orange.
 
 - Palette: `noir16` (custom cyberpunk) als Default, `pal16` (CGA/EGA) optional.
 - Dither-Zelle: 2–4 px (konfigurierbar), CRT-Kette aus `asciiplay` übernommen.
@@ -155,9 +177,47 @@ Alles läuft durch die `asciiplay`-Pipeline:
 
 ## 10. Meilensteine
 
-- **M0** Palette + Dither + Software-Preview (Look validieren).
-- **M1** Sim-Kern: Belt-Bewegung, Crowd, Procgen-Straße, Zonenwechsel.
-- **M2** Tells/Scan/Entscheidung/Konsequenz.
-- **M3** Skillbaum + persistenter Save.
-- **M4** GPU-Renderer (QtOpenGL, echte Shader) + Input + HUD.
-- **M5** Polish: Sound, Neon-Animationen, Balancing, mehr Zonen.
+- **M0** Palette + Dither + Software-Preview (Look validieren). ✔
+- **M1** Sim-Kern: Belt-Bewegung, Crowd, Procgen-Straße, Zonenwechsel. ✔
+- **M2** Tells/Scan/Entscheidung/Konsequenz. ✔
+- **M3** Upgrades pro Run + Highscore ✔ — globaler Skillbaum offen.
+- **M4** GPU-Renderer (QtOpenGL, echte Shader) + Input + HUD. ✔
+- **M5** Polish: Soundtrack + SFX ✔, Verkehr/Suchlicht/Stromausfall/Kopfgeld ✔,
+  Balancing (laufend), weitere Ereignisse.
+
+---
+
+## 11. Steuerung
+
+| Taste | Aktion |
+|---|---|
+| A/D, W/S (Pfeile) | gehen, Tiefe; Shift sprinten |
+| Space / C | springen |
+| Maus zeigen / klicken | Ziel wählen (Klick = genau diese Figur) |
+| Q / Tab / Mausrad | Ziel wechseln |
+| R / rechte Maustaste | gewähltes Ziel scannen (zu weit = Meldung, kein Umschwenken) |
+| E / linke Maustaste | halten = zielen, loslassen = schießen |
+| P/Esc, H, F, M | Pause, Hilfe, Vollbild, Ton |
+
+## 12. Sound
+
+Alles synthetisch (`audio.py`), beim ersten Start in einem Hilfsprozess nach
+`~/.cache/shadegunner/audio-v2/` (~11 s, numpy): Vangelis-artiger Soundtrack
+(CS-80-Flächen, Lead mit Portamento, FM-Glocken, Gong, zirkulärer Faltungshall
+→ nahtloser 128-s-Loop), Stereo-Vorbeifahrten mit Doppler (Spinner, Auto, LKW,
+Motorrad), Patrouille mit Sirene, Donner zum Blitz, Stromausfall/Wiederanlauf.
+Wiedergabe über einen eigenen Software-Mixer auf einem einzigen `QAudioSink`
+(nicht `QSoundEffect`: das öffnet je Effekt einen Strom mit der Medienrolle
+"event", die PipeWire/WirePlumber auf System-Benachrichtigungslautstärke
+herunterzieht).
+
+## 13. Endboss ROY (Zone 5, Tyrell)
+
+Kurz vor dem Zonenende tritt ROY auf (`config.ROY_TRIGGER`). Das Ausgangstor
+bleibt gesperrt, bis er liegt. Er wechselt zwischen **Rede** (unverwundbar,
+Sprung-Angriffe ausgesetzt) und **Kampf** (verwundbar); alle `ROY_PER_LINE`
+Treffer folgt der nächste Satz aus `ROY_LINES` (das Monolog-Zitat). Insgesamt
+`ROY_HP` = 4 Sätze × 2 Treffer. Über ihm steht dauerhaft „ROY", oben eine
+Segment-Leiste, unten der Satz als Typewriter-Untertitel. Er greift mit dem
+bestehenden Nexus-Verhalten an (Punch + Sprungangriff, per Sprung/Tiefe
+ausweichbar) und flieht nie.

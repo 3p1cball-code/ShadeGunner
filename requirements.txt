@@ -1,0 +1,4 @@
+PyQt6>=6.6
+# numpy wird nur zur Erzeugung des Soundtracks gebraucht (optional;
+# ohne numpy läuft das Spiel mit einfacherem Klang weiter).
+numpy>=1.24

@@ -71,8 +71,8 @@ class CRTRenderer:
 
     def __init__(self, gl):
         self.gl = gl
-        self._scene_tex = None
-        self._tex_size = None
+        self._textures = {}
+        self.force_dt = None      # Tools: feste Frame-Zeit statt Wanduhr (Nachleuchten)
         self._size = None
         self._vao = None
         self._last_t = None
@@ -106,7 +106,9 @@ class CRTRenderer:
         self._progs = {
             "bayer": self._compile(common + shaders.BAYER_FRAG, (
                 "u_origin", "u_cell", "u_grid", "u_fbh", "u_gamma", "u_mode", "u_phosphor",
-                "u_order", "u_spread", "u_pal_off", "u_pal_n"), (("u_frame", 0),)),
+                "u_order", "u_spread", "u_pal_off", "u_pal_n", "u_hud_scale", "u_has_hud",
+                "u_contrast", "u_sat", "u_lift"),
+                (("u_frame", 0), ("u_hud", 1))),
             "persist": self._compile(shaders.CRT_PERSIST_FRAG, (
                 "u_res", "u_decay", "u_floor", "u_dtn", "u_tint", "u_tint_mix"),
                 (("u_cur", 0), ("u_prev", 1))),
@@ -167,27 +169,38 @@ class CRTRenderer:
             gl.BindTexture(GL_TEXTURE_2D, tex)
         self._tri()
 
-    def _scene_texture(self, scene_buf, vc, vr):
-        img = QImage(bytes(scene_buf), vc, vr, vc * 3, QImage.Format.Format_RGB888)
-        if self._scene_tex is None or self._tex_size != (vc, vr):
-            if self._scene_tex is not None:
-                self._scene_tex.destroy()
-            t = QOpenGLTexture(img, QOpenGLTexture.MipMapGeneration.DontGenerateMipMaps)
-            t.setMinificationFilter(QOpenGLTexture.Filter.Nearest)
-            t.setMagnificationFilter(QOpenGLTexture.Filter.Nearest)
-            t.setWrapMode(QOpenGLTexture.WrapMode.ClampToEdge)
-            self._scene_tex = t
-            self._tex_size = (vc, vr)
-        else:
-            self._scene_tex.setData(img)
-        return self._scene_tex.textureId()
+    def _upload(self, slot, img):
+        """QImage (RGB32/ARGB32_Premultiplied) als BGRA-Textur hochladen, Speicher wiederverwenden."""
+        if img.format() not in (QImage.Format.Format_RGB32, QImage.Format.Format_ARGB32_Premultiplied):
+            img = img.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
+        size = (img.width(), img.height())
+        tex, tsize = self._textures.get(slot, (None, None))
+        if tex is None or tsize != size:
+            if tex is not None:
+                tex.destroy()
+            tex = QOpenGLTexture(QOpenGLTexture.Target.Target2D)
+            tex.setFormat(QOpenGLTexture.TextureFormat.RGBA8_UNorm)
+            tex.setSize(size[0], size[1])
+            tex.setMinificationFilter(QOpenGLTexture.Filter.Nearest)
+            tex.setMagnificationFilter(QOpenGLTexture.Filter.Nearest)
+            tex.setWrapMode(QOpenGLTexture.WrapMode.ClampToEdge)
+            tex.allocateStorage(QOpenGLTexture.PixelFormat.BGRA, QOpenGLTexture.PixelType.UInt8)
+            self._textures[slot] = (tex, size)
+        tex.setData(QOpenGLTexture.PixelFormat.BGRA, QOpenGLTexture.PixelType.UInt8, img.constBits())
+        return tex.textureId()
+
+    def _scene_texture(self, scene, vc, vr):
+        if not isinstance(scene, QImage):   # Altpfad: RGB-Bytearray
+            scene = QImage(bytes(scene), vc, vr, vc * 3, QImage.Format.Format_RGB888)
+        return self._upload("scene", scene)
 
     # ------------------------------------------------------------------ Render
-    def render(self, target, fw, fh, scene_buf, vc, vr, gamma=0.9, dt=0.016, dpr=1.0, level=None):
+    def render(self, target, fw, fh, scene_buf, vc, vr, gamma=0.9, dt=0.016, dpr=1.0, level=None, hud=None):
         gl = self.gl
         level = level or shaders.CRT_LEVEL
         self._ensure(fw, fh)
         tex = self._scene_texture(scene_buf, vc, vr)
+        hud_tex = self._upload("hud", hud) if hud is not None else 0
 
         cell = min(fw / vc, fh / vr)
         pw, ph = vc * cell, vr * cell
@@ -213,6 +226,13 @@ class CRTRenderer:
         prog.setUniformValue(u["u_pal_off"], shaders.PAL_OFFSETS[config.DEFAULT_PALETTE])
         prog.setUniformValue(u["u_pal_n"], len(config.PALETTES[config.DEFAULT_PALETTE]))
         prog.setUniformValue(u["u_phosphor"], QVector3D(0.0, 0.0, 0.0))
+        prog.setUniformValue(u["u_has_hud"], 1 if hud is not None else 0)
+        prog.setUniformValue(u["u_contrast"], float(config.GRADE_CONTRAST))
+        prog.setUniformValue(u["u_sat"], float(config.GRADE_SATURATION))
+        prog.setUniformValue(u["u_lift"], float(config.GRADE_LIFT))
+        prog.setUniformValue(u["u_hud_scale"], float(hud.width() / vc) if hud is not None else 1.0)
+        gl.ActiveTexture(GL_TEXTURE1)
+        gl.BindTexture(GL_TEXTURE_2D, hud_tex)
         gl.ActiveTexture(GL_TEXTURE0)
         gl.BindTexture(GL_TEXTURE_2D, tex)
         self._tri()
@@ -228,6 +248,8 @@ class CRTRenderer:
     def _crt(self, gl, fbo, fw, fh, rect, cell_y, dt, dpr, lvl):
         now = time.monotonic()
         dt = 0.0 if self._last_t is None else min(0.1, max(0.0, now - self._last_t))
+        if self.force_dt is not None:
+            dt = self.force_dt
         self._last_t = now
         self._seed = (self._seed + 1) & 0xFFFF
 
@@ -254,7 +276,10 @@ class CRTRenderer:
         lit = cur.texture()
 
         # 2. Fokus-Blur (H, dann V)
-        sigma = lvl["blur"] * dpr
+        # An die Dither-Zellgröße koppeln statt an dpr: dann wirkt CRT gleich stark,
+        # egal ob 720p oder 4K (cell = Framebuffer-Pixel pro Dither-Pixel). Referenz 720p -> cell 2.
+        s = max(0.5, cell_y * 0.5)
+        sigma = lvl["blur"] * s
         if sigma > 0.02:
             half = sigma > _CRT_BLUR_HALF_PX * dpr
             buf = self._focus_half if half else self._focus
@@ -301,7 +326,7 @@ class CRTRenderer:
         prog.setUniformValue(u["u_grain"], float(lvl["grain"]))
         prog.setUniformValue(u["u_hum"], float(lvl["hum"]))
         prog.setUniformValue(u["u_vignette"], float(lvl["vignette"]))
-        prog.setUniformValue(u["u_aberr"], float(lvl["aberr"] * dpr))
+        prog.setUniformValue(u["u_aberr"], float(lvl["aberr"] * s))
         prog.setUniformValue(u["u_time"], float((now - self._crt_t0) % 3600.0))
         prog.setUniformValue(u["u_seed"], int(self._seed))
         self._run_pass(fbo, fw, fh, (lit, self._bloom[1].texture()))

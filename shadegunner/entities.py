@@ -1,6 +1,6 @@
 """Aktoren der Spielwelt: Spieler, Passanten, Replikanten.
 
-Reine Daten + einfache Bewegung. Die Spiel-Logik lebt in sim.World.
+Reine Daten. Verhalten (KI, Animation, Kampf) lebt in sim.World.
 """
 
 from dataclasses import dataclass, field
@@ -9,35 +9,55 @@ from dataclasses import dataclass, field
 @dataclass
 class Actor:
     x: float
-    depth: float                       # 0 = fern (Horizont), 1 = nah (Kamera)
-    body: tuple = (26, 30, 50)
-    accent: tuple = (64, 210, 220)
+    depth: float                       # 0 = hinten (Bordstein), 1 = nah (Kamera)
+    look: dict = field(default_factory=dict)
+    uid: int = 0
 
     is_replicant: bool = False
     player: bool = False
     alive: bool = True
-    deactivated: bool = False
+    dead_t: float = 0.0                # Sekunden seit Tod (Animation, Blutlache)
     escaped: bool = False
 
+    facing: int = 1
+    speed: float = 20.0                # bevorzugte Gehgeschwindigkeit
     vx: float = 0.0
-    depth_v: float = 0.0
+    vd: float = 0.0
+    target_depth: float = 0.5
+
+    # Verhalten: walk | idle | panic | flee | attack | cower | hurt | dead
+    #            Spieler: idle | walk | run | aim | shoot | scan | hurt | dead
+    state: str = "walk"
+    state_t: float = 0.0
+    timer: float = 0.0                 # Restzeit des aktuellen Zustands
+    anim: str = "walk"
+    phase: float = 0.0                 # Animationsphase 0..1 (zyklisch)
+    frame: int = 0
+    hit_done: bool = True
 
     # Tells: name -> bool (vorhanden). `revealed` = bereits aufgedeckt.
     tells: dict = field(default_factory=dict)
     revealed: set = field(default_factory=set)
+    scanned: bool = False
+    exposure: float = 0.0
+    alert: bool = False                # Replikant weiß, dass er erkannt wurde
+    aggressive: bool = False
+    aimed_t: float = 0.0               # wie lange der Spieler schon auf ihn zielt
 
-    scanned: bool = False              # mindestens einmal gescannt
-    exposure: float = 0.0              # Beobachtungszeit-Reservoir
+    glint_t: float = 0.0               # Restzeit Augenreflex
+    glint_next: float = 5.0
+    flash_t: float = 0.0               # Treffer-Blitz
+    knock: float = 0.0                 # Rückstoß-Geschwindigkeit
+    hp: int = 1
+    invuln: float = 0.0
+    attack_cd: float = 0.0
 
-    # Wanderung / Idle
-    phase: float = 0.0
-    speed: float = 0.0
+    boss: bool = False                 # Endboss (ROY)
+    boss_invuln: bool = False
 
-    # Transiente Bildschirm-Markierung (z. B. Scan-Blitz), Farbe + Restzeit
-    highlight: tuple = (0, 0, 0)
-    highlight_t: float = 0.0
-    uid: int = 0
-
-    def mark(self, color, t=0.4):
-        self.highlight = color
-        self.highlight_t = t
+    z: float = 0.0                     # Sprunghöhe (Welt-Einheiten)
+    vz: float = 0.0
+    dodge_t: float = 0.0               # weicht gerade Verkehr aus (schnelle Tiefenbewegung)
+    lit_t: float = 0.0                 # Sekunden im Suchlicht
+    bounty: bool = False               # Kopfgeld-Ziel der Zone
+    name: str = ""

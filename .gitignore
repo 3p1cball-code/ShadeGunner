@@ -3,3 +3,8 @@ __pycache__/
 *.png
 .venv/
 data/
+shots/
+
+# Screenshots bleiben im Repo (Ausnahme von *.png oben)
+!screenshots/
+!screenshots/**

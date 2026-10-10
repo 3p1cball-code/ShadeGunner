@@ -63,7 +63,20 @@ uniform int u_order;          // 1,2,3 -> 2x2, 4x4, 8x8
 uniform float u_spread;
 uniform int u_pal_off;
 uniform int u_pal_n;
+uniform sampler2D u_hud;      // HUD (BGRA premultipliziert, HUD_SCALE x Dither-Auflösung)
+uniform float u_hud_scale;
+uniform int u_has_hud;
+uniform float u_contrast;     // 0 = neutral; S-Kurve: Tiefen satter, Lichter heller
+uniform float u_sat;          // 1 = neutral
+uniform float u_lift;         // Schwarzpunkt (negativ = tiefere Schwärzen)
 out vec4 fragColor;
+vec3 grade(vec3 c) {
+    float l = dot(c, vec3(0.299, 0.587, 0.114));
+    c = clamp(mix(vec3(l), c, u_sat), 0.0, 1.0);
+    c = clamp((c + u_lift) / (1.0 + u_lift), 0.0, 1.0);
+    vec3 s = c * c * (3.0 - 2.0 * c);
+    return mix(c, s, u_contrast);
+}
 void main() {
     vec2 p = vec2(gl_FragCoord.x, u_fbh - gl_FragCoord.y) - u_origin;
     vec2 cf = p / u_cell;
@@ -72,7 +85,7 @@ void main() {
         return;
     }
     ivec2 cell = ivec2(floor(cf));
-    vec3 c = texelFetch(u_frame, cell, 0).rgb;
+    vec3 c = grade(texelFetch(u_frame, cell, 0).rgb);
     float t = bayer(cell, u_order);
     vec3 col;
     if (u_mode == 0) {
@@ -82,6 +95,10 @@ void main() {
     } else {
         float lum = pow(dot(c, vec3(77.0, 151.0, 28.0) / 256.0), u_gamma);
         col = (u_mode == 1 ? vec3(1.0) : u_phosphor) * step(t, lum);
+    }
+    if (u_has_hud == 1) {
+        vec4 hud = texelFetch(u_hud, ivec2(floor(cf * u_hud_scale)), 0);
+        col = hud.rgb + col * (1.0 - hud.a);
     }
     fragColor = vec4(col, 1.0);
 }
@@ -210,4 +227,4 @@ void main() {
 
 # CRT-Intensität "normal" (aus asciiplay CRT_LEVELS).
 CRT_LEVEL = dict(curve=0.06, mask=0.22, scan=0.30, bloom=0.70, grain=0.035, hum=0.02,
-                 vignette=0.40, aberr=2.0, blur=0.65, tau=(0.12, 0.18, 0.10))
+                 vignette=0.40, aberr=1.5, blur=0.5, tau=(0.016, 0.023, 0.013))
