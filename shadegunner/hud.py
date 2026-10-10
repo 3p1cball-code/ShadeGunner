@@ -5,6 +5,7 @@ läuft dann mit durch die CRT-Kette: Schrift bleibt lesbar (kein Dither-Rauschen
 bekommt aber Wölbung, Scanlines, Maske und Bloom wie alles andere.
 """
 
+import datetime
 import math
 
 from PyQt6.QtCore import QPointF, QRectF, Qt
@@ -461,7 +462,8 @@ class HUD:
         p.fillRect(QRectF(x0 - 4, uy + 4, tw + 8, 1), QColor(*MAGENTA))
 
         # --- Jahreszahl 2027 ---
-        year = "2 0 2 7"
+        yr = str(datetime.date.today().year + 1)          # Jahreszahl im Titel: aktuelles Jahr + 1
+        year = " ".join(yr)
         ysc = 7
         yw = pixfont.text_width(year, ysc)
         yx = (HW - yw) // 2
@@ -473,7 +475,7 @@ class HUD:
 
         self._t(p, HW // 2, yy + 7 * ysc + 12, "BLADE RUNNER UNIT  ·  REPLICANT DETECTION  ·  LAPD",
                 ASH, 2, "center")
-        self._t(p, HW // 2, yy + 7 * ysc + 38, "LOS ANGELES   ·   NOVEMBER 2027", SLATE, 2, "center")
+        self._t(p, HW // 2, yy + 7 * ysc + 38, f"LOS ANGELES   ·   NOVEMBER {yr}", SLATE, 2, "center")
 
         if int(t * 1.6) % 2 == 0:
             self._t(p, HW // 2, 470, "ENTER  NEUER EINSATZ", WHITE, 3, "center")
