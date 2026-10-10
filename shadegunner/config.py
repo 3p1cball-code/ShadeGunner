@@ -71,7 +71,7 @@ CROWD_DENSITY = 0.55    # 0..1 Grunddichte der Passanten in Zone 2
 
 # Spieler
 PLAYER_WALK_SPEED = 62.0   # Einheiten/Sekunde auf X
-PLAYER_DEPTH_SPEED = 26.0  # Tiefenbewegung (Y) Einheiten/Sekunde
+PLAYER_DEPTH_SPEED = 0.75  # Tiefenbewegung in Sekunden; die Achse läuft 0.15..1.0
 
 # Aktions-Reichweiten (Welt-Einheiten)
 OBSERVE_RANGE = 130.0      # ab hier werden schwache Tells über Zeit sichtbar

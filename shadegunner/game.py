@@ -45,6 +45,7 @@ class GameWidget(QOpenGLWidget):
         self._flash = ("", 0.0)
         self._zone_hold = 0.0
         self._finished_hold = 0.0
+        self._help = False
 
         self.timer = QTimer(self)
         self.timer.setInterval(16)
@@ -107,6 +108,10 @@ class GameWidget(QOpenGLWidget):
             self._say_action(res)
         elif e.key() == Qt.Key.Key_R and self.world.state in ("failed", "finished"):
             self._restart()
+        elif e.key() == Qt.Key.Key_F:
+            (self.showMaximized if self.isFullScreen() else self.showFullScreen)()
+        elif e.key() in (Qt.Key.Key_H, Qt.Key.Key_Question):
+            self._help = not self._help
         elif e.key() == Qt.Key.Key_Escape:
             self.close()
         super().keyPressEvent(e)
@@ -193,9 +198,12 @@ class GameWidget(QOpenGLWidget):
             self._text(p, 16, y, line, SLATE)
             y += 18
 
-        # Steuerung
-        self._text(p, self.width() - 300, self.height() - 24,
-                   "A/D bewegen  W/S tiefe  SPACE scan  E deaktivieren", SLATE)
+        # Steuerung (Kurzfassung; H zeigt alles)
+        self._text(p, self.width() - 360, self.height() - 24,
+                   "A/D bewegen  W/S tiefe  SPACE scan  E deaktivieren  H hilfe", SLATE)
+
+        if self._help:
+            self._draw_help(p)
 
         if w.state == "zone_clear":
             self._center(p, "ZONE GESCHAFFT")
@@ -230,3 +238,39 @@ class GameWidget(QOpenGLWidget):
         p.fillRect(int(x), int(y - h), 6, h, QColor(20, 24, 34))
         col = (64, 210, 220) if conf >= 0.66 else ((255, 138, 44) if conf >= 0.4 else (120, 126, 140))
         p.fillRect(int(x), int(y - h * conf), 6, int(h * conf), QColor(*col))
+
+    def _draw_help(self, p):
+        lines = [
+            "STEUERUNG",
+            "A / D  oder  Pfeil ←/→     links / rechts bewegen",
+            "W / S  oder  Pfeil ↑/↓      näher / weiter weg",
+            "SPACE                      scannen (kostet 1 Ladung)",
+            "E  /  Enter                deaktivieren",
+            "R                          neuer Run (nach Ende)",
+            "F                          Vollbild ein/aus",
+            "H                          diese Hilfe schließen",
+            "Esc                        beenden",
+            "",
+            "ZIEL: Replikanten unter den Passanten erkennen und deaktivieren.",
+            "      Scannen deckt Tells auf (Konfidenz-Meter überm Kopf).",
+            "      Menschen töten -> Suspicion steigt - bei 1.0 ist der Run verloren.",
+        ]
+        pad = 20
+        f = p.font()
+        f.setPixelSize(17)
+        p.setFont(f)
+        fm = p.fontMetrics()
+        wmax = max(fm.horizontalAdvance(s) for s in lines)
+        bw = wmax + pad * 2
+        bh = len(lines) * 26 + pad * 2
+        x = (self.width() - bw) / 2
+        y = (self.height() - bh) / 2
+        p.fillRect(int(x), int(y), int(bw), int(bh), QColor(6, 8, 14, 225))
+        p.setPen(QPen(QColor(64, 210, 220)))
+        p.drawRect(int(x), int(y), int(bw), int(bh))
+        yy = y + pad + 16
+        for i, s in enumerate(lines):
+            self._text(p, x + pad, yy, s, WHITE if i == 0 else ASH)
+            yy += 26
+        f.setPixelSize(15)
+        p.setFont(f)
