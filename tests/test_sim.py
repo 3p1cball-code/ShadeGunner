@@ -6,9 +6,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from voight import config  # noqa: E402
-from voight.detection import STRONG_TELLS, TELLS, confidence  # noqa: E402
-from voight.sim import ZONES, World  # noqa: E402
+from shadegunner import config  # noqa: E402
+from shadegunner.detection import STRONG_TELLS, TELLS, confidence  # noqa: E402
+from shadegunner.sim import ZONES, World  # noqa: E402
 
 
 def test_population():

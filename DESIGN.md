@@ -1,4 +1,4 @@
-# VOIGHT — Design-Doc
+# ShadeGunner — Design-Doc
 
 > Arbeitstitel. 16-Farben-Cyberpunk-Sidescroller im Blade-Runner-Universum.
 > Engine: `asciiplay`-Renderpfad (Bayer-Dither + CRT + Parallax), GPU über PyQt6/QtOpenGL.
@@ -112,7 +112,7 @@ Tyrell-HQ.
 ## 7. Skillbaum (persistent, global)
 
 Beim Deaktivieren von Replikanten und beim sauberen Abschluss einer Zone gibt es
-Skillpunkte. Gespeichert wird **global** (`~/.local/share/voight/save.json`),
+Skillpunkte. Gespeichert wird **global** (`~/.local/share/shadegunner/save.json`),
 nicht pro Run.
 
 Beispielzweige (jeder nur „mehr Werkzeug", nie „Garantie"):

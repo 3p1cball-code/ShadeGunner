@@ -11,10 +11,10 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from voight import config  # noqa: E402
-from voight.palette import dither  # noqa: E402
-from voight.render import pngmin  # noqa: E402
-from voight.render.software import Canvas, draw_pedestrian  # noqa: E402
+from shadegunner import config  # noqa: E402
+from shadegunner.palette import dither  # noqa: E402
+from shadegunner.render import pngmin  # noqa: E402
+from shadegunner.render.software import Canvas, draw_pedestrian  # noqa: E402
 
 
 def build_scene(w, h, seed=7):
@@ -130,7 +130,7 @@ def build_scene(w, h, seed=7):
 
 
 def main():
-    out = sys.argv[1] if len(sys.argv) > 1 else "/tmp/opencode/voight_preview.png"
+    out = sys.argv[1] if len(sys.argv) > 1 else "/tmp/opencode/shadegunner_preview.png"
     pal = sys.argv[2] if len(sys.argv) > 2 else config.DEFAULT_PALETTE
     w, h = config.RENDER_W, config.RENDER_H
     cav = build_scene(w, h)
