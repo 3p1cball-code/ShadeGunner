@@ -1,4 +1,4 @@
-"""Anwendungseinstieg.  Start:  python3 -m shadegunner   (oder tools/run.sh)"""
+"""Anwendungseinstieg.  Start:  python3 -m shadegunner [--fullscreen]"""
 
 import sys
 
@@ -18,9 +18,15 @@ def _set_gl_format():
 
 def main():
     _set_gl_format()
+    fullscreen = "--fullscreen" in sys.argv
     app = QApplication(sys.argv)
     widget = GameWidget()
-    widget.show()
+    if fullscreen:
+        widget.showFullScreen()
+    else:
+        widget.showMaximized()
+    widget.raise_()
+    widget.activateWindow()
     sys.exit(app.exec())
 
 
