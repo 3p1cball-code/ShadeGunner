@@ -235,3 +235,12 @@ Zwei Pfade teilen sich die Spiellogik (`game._GameMixin`):
 
 `app.main` prüft per Offscreen-Kontext, ob OpenGL 3.3 geht, und wählt automatisch den
 passenden Pfad. Der Software-Pfad lief verifiziert in einer GPU-losen Windows-VM.
+
+## 15. Einstellungen (Grafik/Sound)
+
+Eigener Screen (Titel/Pause mit `S`): **Musik**- und **Effekt**-Lautstärke (je 0–100 %),
+**Vollbild**, **Scanlines** (AN/AUS) und **Renderer** (GPU/Software). Persistiert als
+`settings.json` neben dem Spielstand; Renderer-Wechsel greift beim nächsten Start.
+`config`-unabhängige Werte, live angewandt (Audio-Volumes, CRT-Scan/Maske, Overlay).
+
+ROY (§13) tritt jetzt erst auf, wenn die **Tyrell-Quote erfüllt** ist.

@@ -73,6 +73,7 @@ class CRTRenderer:
         self.gl = gl
         self._textures = {}
         self.force_dt = None      # Tools: feste Frame-Zeit statt Wanduhr (Nachleuchten)
+        self.scan_on = True       # Scanlines + Schattenmaske (Einstellung)
         self._size = None
         self._vao = None
         self._last_t = None
@@ -318,9 +319,10 @@ class CRTRenderer:
         prog.setUniformValue(u["u_rect"], QVector4D(*(float(v) for v in rect)))
         prog.setUniformValue(u["u_curve"], float(lvl["curve"]))
         prog.setUniformValue(u["u_corner"], float(0.035 * min(rect[2], rect[3])))
-        prog.setUniformValue(u["u_mask"], float(lvl["mask"]))
+        so = 1.0 if self.scan_on else 0.0
+        prog.setUniformValue(u["u_mask"], float(lvl["mask"] * so))
         prog.setUniformValue(u["u_mask_px"], float(max(1, round(dpr))))
-        prog.setUniformValue(u["u_scan"], float(lvl["scan"]))
+        prog.setUniformValue(u["u_scan"], float(lvl["scan"] * so))
         prog.setUniformValue(u["u_scan_period"], float(scan_period))
         prog.setUniformValue(u["u_bloom_amt"], float(lvl["bloom"]))
         prog.setUniformValue(u["u_grain"], float(lvl["grain"]))

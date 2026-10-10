@@ -350,6 +350,9 @@ def test_boss_flow():
     _quiet(w)
     w.player.x = w.length - config.ROY_TRIGGER + 5
     w.update(DT, {})
+    assert not w.boss_spawned, "ROY spawnt, obwohl der Auftrag nicht erfüllt ist"
+    w.stats["reps"] = w.quota          # Tyrell-Auftrag erfüllt
+    w.update(DT, {})
     b = w.boss
     assert w.boss_spawned and b is not None and b.alive and b.hp == config.ROY_HP
     assert b.boss_invuln, "ROY redet nicht zu Beginn"

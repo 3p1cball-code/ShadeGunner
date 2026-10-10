@@ -13,7 +13,7 @@ from PyQt6.QtGui import QPainter
 from PyQt6.QtOpenGLWidgets import QOpenGLWidget
 from PyQt6.QtWidgets import QWidget
 
-from . import config, save
+from . import config, save, settings
 from .audio import Audio
 from .hud import HUD, rank_of
 from .render import sodither
@@ -41,6 +41,8 @@ class _GameMixin:
     SoftwareGameWidget (QWidget + CPU-Dither). Nur die Darstellung unterscheidet sich.
     """
 
+    _SETTING_KEYS = ["music", "sfx", "fullscreen", "scanlines", "renderer"]
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.software = False
@@ -54,6 +56,10 @@ class _GameMixin:
         self.hud = HUD()
         self.audio = Audio()
         self.best = save.load()
+        self.settings = settings.load()
+        self.settings_sel = 0
+        self._settings_back = "title"
+        self.audio.set_volumes(self.settings["music"], self.settings["sfx"])
 
         self._gl = None
         self.renderer = None
@@ -139,7 +145,7 @@ class _GameMixin:
                     self._trans = None
 
         w = self.world
-        paused = self.help or self.mode == "pause"
+        paused = self.help or self.mode in ("pause", "settings")
         if not paused:
             if self.mode == "title":
                 self.title_cam += 16.0 * dt
@@ -259,6 +265,42 @@ class _GameMixin:
         self.options = []
         self._transition(go)
 
+    # ---------------------------------------------------------------- Einstellungen
+    def _open_settings(self, back):
+        self._settings_back = back
+        self.settings_sel = 0
+        self._set_mode("settings")
+        self.audio.play("ui")
+
+    def _settings_adjust(self, d):
+        key = self._SETTING_KEYS[self.settings_sel]
+        s = self.settings
+        if key == "music":
+            s["music"] = max(0.0, min(1.0, s["music"] + 0.1 * d))
+            self.audio.set_volumes(music=s["music"])
+        elif key == "sfx":
+            s["sfx"] = max(0.0, min(1.0, s["sfx"] + 0.1 * d))
+            self.audio.set_volumes(sfx=s["sfx"])
+        elif key == "fullscreen":
+            self._toggle_fullscreen()
+        elif key == "scanlines":
+            s["scanlines"] = not s["scanlines"]
+            self._apply_scanlines()
+        elif key == "renderer":
+            s["renderer"] = "software" if s.get("renderer") != "software" else "auto"
+        settings.save(s)
+        self.audio.play("target")
+
+    def _apply_scanlines(self):
+        if self.renderer is not None:
+            self.renderer.scan_on = bool(self.settings.get("scanlines", True))
+
+    def _toggle_fullscreen(self):
+        if self.isFullScreen():
+            self.showMaximized()
+        else:
+            self.showFullScreen()
+
     # ---------------------------------------------------------------- Input
     def keyPressEvent(self, e):
         k = e.key()
@@ -284,6 +326,8 @@ class _GameMixin:
             if k in CONFIRM:
                 self.audio.play("ui")
                 self._transition(self._start_run)
+            elif k == K.Key_S:
+                self._open_settings("title")
             elif k == K.Key_Escape:
                 self.close()
         elif m == "intro":
@@ -306,8 +350,27 @@ class _GameMixin:
         elif m == "pause":
             if k in (K.Key_P, K.Key_Escape):
                 self._set_mode("play")
+            elif k == K.Key_S:
+                self._open_settings("pause")
             elif k == K.Key_Q:
                 self._transition(self._title_world)
+        elif m == "settings":
+            if k in (K.Key_Escape, K.Key_S):
+                self._set_mode(self._settings_back)
+                settings.save(self.settings)
+                self.audio.play("ui")
+            elif k in (K.Key_Up, K.Key_W):
+                self.settings_sel = (self.settings_sel - 1) % len(self._SETTING_KEYS)
+                self.audio.play("target")
+            elif k == K.Key_Down:
+                self.settings_sel = (self.settings_sel + 1) % len(self._SETTING_KEYS)
+                self.audio.play("target")
+            elif k in MOVE_LEFT:
+                self._settings_adjust(-1)
+            elif k in MOVE_RIGHT:
+                self._settings_adjust(+1)
+            elif k in CONFIRM:
+                self._settings_adjust(+1)
         elif m == "clear":
             if k in (K.Key_1, K.Key_2, K.Key_3):
                 self._choose(k - K.Key_1)
@@ -386,7 +449,8 @@ class _GameMixin:
         hud_mode = {"cleared": "play", "failing": "play"}.get(self.mode, self.mode)
         return dict(mode=hud_mode, help=self.help, t=self.mode_t, best=self.best,
                     options=self.options, sel=self.sel,
-                    mouse=self.mouse_scene if self.mouse_t < 2.5 else None, **self.end_info)
+                    mouse=self.mouse_scene if self.mouse_t < 2.5 else None,
+                    settings=self.settings, settings_sel=self.settings_sel, **self.end_info)
 
 
 class GameWidget(_GameMixin, QOpenGLWidget):
@@ -416,6 +480,7 @@ class GameWidget(_GameMixin, QOpenGLWidget):
         t1 = time.perf_counter()
         himg = self.hud.render(self.world, self.scene, self._dt, self._hud_ui())
         t2 = time.perf_counter()
+        self.renderer.scan_on = bool(self.settings.get("scanlines", True))
         self.renderer.render(self.defaultFramebufferObject(), fw, fh, img, self.vc, self.vr,
                              gamma=0.9, dt=self._dt, dpr=dpr, hud=himg)
         t3 = time.perf_counter()
@@ -461,7 +526,8 @@ class SoftwareGameWidget(_GameMixin, QWidget):
         img = self.scene.frame(self.world, dt, show_player=(m != "title"), fade=self.fade,
                                power=self.power, cam_override=cam)
         W, H = max(1, self.width()), max(1, self.height())
-        base = sodither.compose(img, W, H, self._overlay(W, H))
+        ov = self._overlay(W, H) if self.settings.get("scanlines", True) else None
+        base = sodither.compose(img, W, H, ov)
         t1 = time.perf_counter()
         himg = self.hud.render(self.world, self.scene, self._dt, self._hud_ui())
         t2 = time.perf_counter()

@@ -107,6 +107,8 @@ class HUD:
             self._intro(p, world, ui)
         elif mode == "pause":
             self._pause(p)
+        elif mode == "settings":
+            self._settings(p, ui)
         elif mode == "clear":
             self._clear(p, world, ui)
         elif mode in ("over", "victory"):
@@ -479,7 +481,7 @@ class HUD:
 
         if int(t * 1.6) % 2 == 0:
             self._t(p, HW // 2, 470, "ENTER  NEUER EINSATZ", WHITE, 3, "center")
-        self._t(p, HW // 2, 514, "H  STEUERUNG & REGELN      ESC  ENDE", ASH, 2, "center")
+        self._t(p, HW // 2, 514, "H  STEUERUNG      S  EINSTELLUNGEN      ESC  ENDE", ASH, 2, "center")
         best = ui.get("best")
         if best:
             self._t(p, HW // 2, 554, f"BESTWERT {best.get('best', 0):06d}  RANG {best.get('rank', '-')}  "
@@ -516,10 +518,41 @@ class HUD:
         if k > 1.3 and int(self.t * 2) % 2 == 0:
             self._t(p, HW // 2, y + h - 26, "BELIEBIGE TASTE", SLATE, 2, "center")
 
+    # Zeilen des Einstellungsmenüs: (Label, Wert-Funktion, Art)
+    SETTING_ROWS = [
+        ("MUSIK", lambda s: f"{int(round(s['music'] * 100)):3d}%", "range"),
+        ("EFFEKTE", lambda s: f"{int(round(s['sfx'] * 100)):3d}%", "range"),
+        ("VOLLBILD", lambda s: "AN" if s["fullscreen"] else "AUS", "toggle"),
+        ("SCANLINES", lambda s: "AN" if s["scanlines"] else "AUS", "toggle"),
+        ("RENDERER", lambda s: "GPU" if s.get("renderer") != "software" else "SOFTWARE", "toggle"),
+    ]
+
+    def _settings(self, p, ui):
+        self._dim(p, 200)
+        s = ui.get("settings", {})
+        sel = ui.get("settings_sel", 0)
+        self._t(p, HW // 2, 120, "EINSTELLUNGEN", WHITE, 5, "center")
+        w, rowh, gap = 720, 46, 12
+        x = (HW - w) // 2
+        y = 210
+        for i, (label, val, kind) in enumerate(self.SETTING_ROWS):
+            on = i == sel
+            y0 = y + i * (rowh + gap)
+            self._box(p, x, y0, w, rowh, border=CYAN if on else INDIGO, alpha=225)
+            self._t(p, x + 24, y0 + 15, label, WHITE if on else ASH, 3)
+            vtxt = val(s)
+            self._t(p, x + w - 24, y0 + 15, vtxt, CYAN if on else PALE, 3, "right")
+            if kind == "range" and on:
+                self._t(p, x + w // 2 + 60, y0 + 17, "←  →", AMBER, 2, "center")
+        note = y + len(self.SETTING_ROWS) * (rowh + gap) + 8
+        if s.get("renderer") == "software":
+            self._t(p, HW // 2, note, "RENDERER WECHSELT MIT DEM NÄCHSTEN START", SLATE, 2, "center")
+        self._t(p, HW // 2, HH - 70, "▲▼  WÄHLEN      ← →  ÄNDERN      ESC / S  ZURÜCK", ASH, 2, "center")
+
     def _pause(self, p):
         self._dim(p, 150)
         self._t(p, HW // 2, 230, "PAUSE", WHITE, 6, "center")
-        self._t(p, HW // 2, 330, "P / ESC  WEITER      H  HILFE      Q  ZUM TITEL", ASH, 2, "center")
+        self._t(p, HW // 2, 330, "P / ESC  WEITER      S  EINSTELLUNGEN      H  HILFE      Q  ZUM TITEL", ASH, 2, "center")
 
     def _clear(self, p, world, ui):
         self._dim(p, 175)

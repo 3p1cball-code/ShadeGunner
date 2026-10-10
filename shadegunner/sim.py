@@ -911,7 +911,8 @@ class World:
         if self.zone_index != 4 or self.state != "playing":
             return
         if not self.boss_spawned:
-            if self.player.x > self.length - config.ROY_TRIGGER:
+            # ROY tritt erst auf, wenn der Auftrag in Tyrell erledigt ist (Quote erfüllt)
+            if self.stats["reps"] >= self.quota and self.player.x > self.length - config.ROY_TRIGGER:
                 self._spawn_boss()
             return
         b = self.boss

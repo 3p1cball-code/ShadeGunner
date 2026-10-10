@@ -6,6 +6,7 @@ import sys
 from PyQt6.QtGui import QSurfaceFormat
 from PyQt6.QtWidgets import QApplication
 
+from . import settings
 from .game import GameWidget, SoftwareGameWidget
 
 
@@ -52,10 +53,11 @@ def main():
         return
 
     _set_gl_format()
-    fullscreen = "--fullscreen" in sys.argv
+    cfg = settings.load()
+    fullscreen = ("--fullscreen" in sys.argv) or bool(cfg.get("fullscreen"))
     app = QApplication(sys.argv)
 
-    software = _want_software() or not _probe_gl()
+    software = _want_software() or cfg.get("renderer") == "software" or not _probe_gl()
     if software:
         print("[info] Software-Renderer (kein OpenGL 3.3 / per Schalter aktiviert)")
     widget = SoftwareGameWidget() if software else GameWidget()

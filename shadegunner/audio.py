@@ -686,6 +686,8 @@ class Audio:
         self._proc = None
         self._poll_t = 0.0
         self._music_vol = 1.0
+        self.music_vol = 1.0     # Nutzer-Lautstärke Musik (0..1)
+        self.sfx_vol = 1.0       # Nutzer-Lautstärke Effekte (0..1)
         self._t = 0.0
         self.mixer = None
         if not self.enabled:
@@ -761,11 +763,13 @@ class Audio:
         return [pool, 0]
 
     def _start_loop(self, name):
+        base = VOLUME.get(name, 0.6) * (self.music_vol if name == "music" else self.sfx_vol)
         if self.mixer is not None:
             if not self.mixer.playing(name):
-                self.mixer.play(name, VOLUME.get(name, 0.6), loop=True)
+                self.mixer.play(name, base, loop=True)
         else:
             e = self._fx[name][0][0]
+            e.setVolume(base)
             if not e.isPlaying():
                 e.play()
 
@@ -785,6 +789,7 @@ class Audio:
         if not self.enabled or self.muted or name not in self._fx:
             return
         v = VOLUME.get(name, 0.6) if vol is None else max(0.0, min(1.0, vol))
+        v = max(0.0, min(1.0, v * (self.music_vol if name == "music" else self.sfx_vol)))
         if self.mixer is not None:
             self.mixer.play(name, v, now=self._t)
             return
@@ -808,11 +813,33 @@ class Audio:
         self._t += dt
         goal = 0.35 if (world is not None and getattr(world, "blackout_t", 0) > 0) else 1.0
         self._music_vol += (goal - self._music_vol) * min(1.0, dt * 1.5)
+        mus = VOLUME["music"] * self.music_vol * self._music_vol
+        rain = VOLUME["rain"] * self.sfx_vol
         if self.mixer is not None:
-            self.mixer.set_vol("music", VOLUME["music"] * self._music_vol)
+            self.mixer.set_vol("music", mus)
+            self.mixer.set_vol("rain", rain)
             self.mixer.pump(silent=self.muted)
         elif "music" in self._fx:
-            self._fx["music"][0][0].setVolume(VOLUME["music"] * self._music_vol)
+            self._fx["music"][0][0].setVolume(mus)
+
+    def set_volumes(self, music=None, sfx=None):
+        """Nutzer-Lautstärken setzen und sofort anwenden (0..1)."""
+        if music is not None:
+            self.music_vol = max(0.0, min(1.0, music))
+        if sfx is not None:
+            self.sfx_vol = max(0.0, min(1.0, sfx))
+        if not self.enabled:
+            return
+        mus = VOLUME["music"] * self.music_vol * self._music_vol
+        rain = VOLUME["rain"] * self.sfx_vol
+        if self.mixer is not None:
+            self.mixer.set_vol("music", mus)
+            self.mixer.set_vol("rain", rain)
+        elif self._fx:
+            if "music" in self._fx:
+                self._fx["music"][0][0].setVolume(mus)
+            if "rain" in self._fx:
+                self._fx["rain"][0][0].setVolume(rain)
 
     def handle_events(self, events, world=None):
         for ev in events:

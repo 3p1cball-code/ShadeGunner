@@ -47,7 +47,7 @@ ist der Einsatz verloren).
 | `R` / rechte Maustaste | gewähltes Ziel scannen |
 | `E` / linke Maustaste | halten = zielen, loslassen = schießen |
 | `C` / rechte Maustaste | Schuss abbrechen (Waffe senken) |
-| `P` Pause · `H` Hilfe · `F` Vollbild · `M` Ton | |
+| `P` Pause · `H` Hilfe · `F` Vollbild · `M` Ton · `S` Einstellungen (Titel/Pause) | |
 
 ## Start
 
@@ -86,6 +86,8 @@ Klang-Cache unter `%LOCALAPPDATA%\shadegunner\`.
 - Palette `noir16` (eigene Noir-Palette) als Standard.
 - Das Spiel selbst ist **numpy-frei**; numpy wird nur zur Klang-Erzeugung genutzt
   (mit Fallback ohne numpy).
+- **Einstellungen** (Musik, Effekte, Vollbild, Scanlines, Renderer) liegen neben dem
+  Spielstand (`%APPDATA%\shadegunner\settings.json` bzw. XDG-Pfad).
 - Tests: `python3 tests/test_sim.py` (Simulation, ohne GL).
 
 ## Werkzeuge
