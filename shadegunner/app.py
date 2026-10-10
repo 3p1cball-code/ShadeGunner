@@ -61,10 +61,17 @@ def main():
     if software:
         print("[info] Software-Renderer (kein OpenGL 3.3 / per Schalter aktiviert)")
     widget = SoftwareGameWidget() if software else GameWidget()
+    rw, rh = cfg.get("resolution", [1280, 720])
     if fullscreen:
         widget.showFullScreen()
     else:
-        widget.showMaximized()
+        scr = widget.screen().availableGeometry() if widget.screen() else None
+        if scr is not None:
+            rw, rh = min(int(rw), scr.width()), min(int(rh), scr.height())
+        widget.resize(int(rw), int(rh))
+        widget.showNormal()
+        if scr is not None:
+            widget.move(scr.center().x() - int(rw) // 2, scr.center().y() - int(rh) // 2)
     widget.raise_()
     widget.activateWindow()
     sys.exit(app.exec())

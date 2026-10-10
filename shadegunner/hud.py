@@ -523,6 +523,7 @@ class HUD:
         ("MUSIK", lambda s: f"{int(round(s['music'] * 100)):3d}%", "range"),
         ("EFFEKTE", lambda s: f"{int(round(s['sfx'] * 100)):3d}%", "range"),
         ("VOLLBILD", lambda s: "AN" if s["fullscreen"] else "AUS", "toggle"),
+        ("AUFLÖSUNG", lambda s: f"{s['resolution'][0]} x {s['resolution'][1]}", "cycle"),
         ("SCANLINES", lambda s: "AN" if s["scanlines"] else "AUS", "toggle"),
         ("RENDERER", lambda s: "GPU" if s.get("renderer") != "software" else "SOFTWARE", "toggle"),
     ]

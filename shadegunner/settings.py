@@ -6,7 +6,8 @@ import os
 from .save import _base_dir
 
 # renderer: "auto" (OpenGL, sonst Software) | "software" (immer CPU)
-DEFAULTS = dict(music=0.7, sfx=1.0, fullscreen=False, scanlines=True, renderer="auto")
+DEFAULTS = dict(music=0.7, sfx=1.0, fullscreen=False, resolution=[1280, 720],
+                scanlines=True, renderer="auto")
 
 
 def _path():
@@ -22,6 +23,9 @@ def load():
             d.update({k: v for k, v in data.items() if k in DEFAULTS})
     except (OSError, ValueError):
         pass
+    r = d.get("resolution")
+    if not (isinstance(r, (list, tuple)) and len(r) == 2 and all(isinstance(v, int) for v in r)):
+        d["resolution"] = list(DEFAULTS["resolution"])
     return d
 
 

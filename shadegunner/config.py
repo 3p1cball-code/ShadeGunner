@@ -40,6 +40,9 @@ CGA16 = [
 PALETTES = {"noir16": NOIR16, "cga16": CGA16}
 DEFAULT_PALETTE = "noir16"
 
+# Fenster-Auflösungen im Einstellungsmenü (im Vollbild gilt die Bildschirmauflösung).
+RESOLUTIONS = [(1280, 720), (1366, 768), (1600, 900), (1920, 1080), (2560, 1440), (3840, 2160)]
+
 # Wie weit der Bayer-Schwellwert eine Farbe verschiebt, bevor sie auf den nächsten
 # Paletteneintrag schnappt. Größer = sichtbareres Dithering zwischen Nachbarfarben.
 DITHER_SPREAD = 0.24

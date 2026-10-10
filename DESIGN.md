@@ -239,7 +239,9 @@ passenden Pfad. Der Software-Pfad lief verifiziert in einer GPU-losen Windows-VM
 ## 15. Einstellungen (Grafik/Sound)
 
 Eigener Screen (Titel/Pause mit `S`): **Musik**- und **Effekt**-Lautstärke (je 0–100 %),
-**Vollbild**, **Scanlines** (AN/AUS) und **Renderer** (GPU/Software). Persistiert als
+**Vollbild**, **Auflösung** (Presets `config.RESOLUTIONS` 1280×720 … 3840×2160),
+**Scanlines** (AN/AUS) und **Renderer** (GPU/Software). Im Fenster wird exakt die gewählte
+Auflösung gesetzt und zentriert; im Vollbild gilt die Bildschirmauflösung. Persistiert als
 `settings.json` neben dem Spielstand; Renderer-Wechsel greift beim nächsten Start.
 `config`-unabhängige Werte, live angewandt (Audio-Volumes, CRT-Scan/Maske, Overlay).
 

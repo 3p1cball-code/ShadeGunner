@@ -86,8 +86,10 @@ Klang-Cache unter `%LOCALAPPDATA%\shadegunner\`.
 - Palette `noir16` (eigene Noir-Palette) als Standard.
 - Das Spiel selbst ist **numpy-frei**; numpy wird nur zur Klang-Erzeugung genutzt
   (mit Fallback ohne numpy).
-- **Einstellungen** (Musik, Effekte, Vollbild, Scanlines, Renderer) liegen neben dem
-  Spielstand (`%APPDATA%\shadegunner\settings.json` bzw. XDG-Pfad).
+- **Einstellungen** (Musik, Effekte, Vollbild, **Auflösung**, Scanlines, Renderer) liegen
+  neben dem Spielstand (`%APPDATA%\shadegunner\settings.json` bzw. XDG-Pfad). Im Fenster
+  bekommt das Spiel exakt die gewählte Auflösung (zentriert); im Vollbild gilt die
+  Bildschirmauflösung.
 - Tests: `python3 tests/test_sim.py` (Simulation, ohne GL).
 
 ## Werkzeuge

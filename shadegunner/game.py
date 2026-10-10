@@ -41,7 +41,7 @@ class _GameMixin:
     SoftwareGameWidget (QWidget + CPU-Dither). Nur die Darstellung unterscheidet sich.
     """
 
-    _SETTING_KEYS = ["music", "sfx", "fullscreen", "scanlines", "renderer"]
+    _SETTING_KEYS = ["music", "sfx", "fullscreen", "resolution", "scanlines", "renderer"]
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -282,7 +282,17 @@ class _GameMixin:
             s["sfx"] = max(0.0, min(1.0, s["sfx"] + 0.1 * d))
             self.audio.set_volumes(sfx=s["sfx"])
         elif key == "fullscreen":
-            self._toggle_fullscreen()
+            s["fullscreen"] = not s["fullscreen"]
+            self._apply_display()
+        elif key == "resolution":
+            res = config.RESOLUTIONS
+            try:
+                i = res.index(tuple(s["resolution"]))
+            except ValueError:
+                i = 0
+            i = (i + (1 if d > 0 else -1)) % len(res)
+            s["resolution"] = list(res[i])
+            self._apply_display()
         elif key == "scanlines":
             s["scanlines"] = not s["scanlines"]
             self._apply_scanlines()
@@ -295,11 +305,19 @@ class _GameMixin:
         if self.renderer is not None:
             self.renderer.scan_on = bool(self.settings.get("scanlines", True))
 
-    def _toggle_fullscreen(self):
-        if self.isFullScreen():
-            self.showMaximized()
-        else:
+    def _apply_display(self):
+        """Fenster/Vollbild gemäß Einstellungen setzen (Auflösung = Fenstergröße, zentriert)."""
+        w, h = int(self.settings["resolution"][0]), int(self.settings["resolution"][1])
+        if self.settings.get("fullscreen"):
             self.showFullScreen()
+            return
+        self.showNormal()
+        scr = self.screen().availableGeometry() if self.screen() else None
+        if scr is not None:
+            w, h = min(w, scr.width()), min(h, scr.height())
+        self.resize(w, h)
+        if scr is not None:
+            self.move(scr.center().x() - w // 2, scr.center().y() - h // 2)
 
     # ---------------------------------------------------------------- Input
     def keyPressEvent(self, e):
@@ -309,7 +327,9 @@ class _GameMixin:
         if rep:
             return
         if k == K.Key_F:
-            (self.showMaximized if self.isFullScreen() else self.showFullScreen)()
+            self.settings["fullscreen"] = not self.isFullScreen()
+            self._apply_display()
+            settings.save(self.settings)
             return
         if k == K.Key_M:
             self.audio.toggle_mute()
