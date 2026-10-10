@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=ShadeGunner starten
+Comment=16-Farben Blade-Runner-Sidescroller (Bayer-Dither + CRT)
+Exec=/home/alex/ShadeGunner/tools/run.sh
+Path=/home/alex/ShadeGunner
+Icon=applications-games
+Terminal=false
+Categories=Game;
+StartupWMClass=ShadeGunner
