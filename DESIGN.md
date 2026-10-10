@@ -221,3 +221,17 @@ Treffer folgt der nächste Satz aus `ROY_LINES` (das Monolog-Zitat). Insgesamt
 Segment-Leiste, unten der Satz als Typewriter-Untertitel. Er greift mit dem
 bestehenden Nexus-Verhalten an (Punch + Sprungangriff, per Sprung/Tiefe
 ausweichbar) und flieht nie.
+
+## 14. Renderpfade & Software-Fallback
+
+Zwei Pfade teilen sich die Spiellogik (`game._GameMixin`):
+
+- **`GameWidget` (OpenGL 3.3):** Standard. GPU macht Grading, Bayer-Dither, HUD-Overlay
+  und die CRT-Kette (`render/shaders.py`).
+- **`SoftwareGameWidget` (CPU):** Fallback, wenn kein OpenGL 3.3 verfügbar ist (VM,
+  Server/RDP, alte/keine GPU) oder per `--software` / `SHADEGUNNER_SOFTWARE=1`.
+  `render/sodither.py` spiegelt Grading und Palette des Shaders (6-Bit-Farb-LUT) und
+  legt Scanlines + Vignette darüber.
+
+`app.main` prüft per Offscreen-Kontext, ob OpenGL 3.3 geht, und wählt automatisch den
+passenden Pfad. Der Software-Pfad lief verifiziert in einer GPU-losen Windows-VM.

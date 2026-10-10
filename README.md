@@ -78,6 +78,10 @@ Klang-Cache unter `%LOCALAPPDATA%\shadegunner\`.
 
 ## Technik
 
+- **Renderpfade:** Standard ist OpenGL 3.3 (GPU: Bayer-Dither + CRT-Kette). Fehlt
+  OpenGL 3.3 (VM, Server, alte/keine GPU), schaltet das Spiel automatisch auf einen
+  **CPU-Fallback** um (Dither + Scanlines + Vignette, ~25–30 fps). Erzwingbar mit
+  `--software` oder `SHADEGUNNER_SOFTWARE=1` (braucht numpy).
 - Interne (Dither-)Auflösung 640×360, wird per CRT/Anzeige hochskaliert.
 - Palette `noir16` (eigene Noir-Palette) als Standard.
 - Das Spiel selbst ist **numpy-frei**; numpy wird nur zur Klang-Erzeugung genutzt

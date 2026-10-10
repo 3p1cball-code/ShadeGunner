@@ -8,3 +8,11 @@ shots/
 # Screenshots bleiben im Repo (Ausnahme von *.png oben)
 !screenshots/
 !screenshots/**
+
+# Build-Artefakte (PyInstaller / Auslieferung)
+dist/
+build/
+*.zip
+
+# Werkzeug-Artefakte (Playwright) — lokale Browser-Automation
+.playwright-mcp/

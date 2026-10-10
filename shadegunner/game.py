@@ -9,11 +9,14 @@ import random
 import time
 
 from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QPainter
 from PyQt6.QtOpenGLWidgets import QOpenGLWidget
+from PyQt6.QtWidgets import QWidget
 
 from . import config, save
 from .audio import Audio
 from .hud import HUD, rank_of
+from .render import sodither
 from .render.glrender import CRTRenderer, GLFuncs
 from .render.scene import Scene
 from .sim import ZONES, Run, World
@@ -31,9 +34,16 @@ JUMP_KEYS = {K.Key_Space}
 CANCEL_KEYS = {K.Key_C}
 
 
-class GameWidget(QOpenGLWidget):
+class _GameMixin:
+    """Gemeinsame Spiellogik (Zustände, Eingabe, HUD, Sound) für beide Renderpfade.
+
+    Konkrete Widgets: GameWidget (QOpenGLWidget + CRTRenderer) und
+    SoftwareGameWidget (QWidget + CPU-Dither). Nur die Darstellung unterscheidet sich.
+    """
+
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.software = False
         self.setWindowTitle("ShadeGunner")
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMouseTracking(True)
@@ -99,15 +109,6 @@ class GameWidget(QOpenGLWidget):
     def _transition(self, cb):
         if self._trans is None:
             self._trans = ["out", cb]
-
-    # ---------------------------------------------------------------- GL
-    def initializeGL(self):
-        try:
-            self._gl = GLFuncs(self.context())
-            self.renderer = CRTRenderer(self._gl)
-            self.timer.start()
-        except Exception as exc:  # noqa: BLE001
-            print(f"[error] GL-Init fehlgeschlagen: {exc}")
 
     def focusNextPrevChild(self, _next):   # Tab gehört dem Spiel
         return False
@@ -175,7 +176,7 @@ class GameWidget(QOpenGLWidget):
         ox, oy = (fw - pw) / 2, (fh - ph) / 2
         nx = (pos.x() * dpr - ox) / pw * 2 - 1
         ny = (pos.y() * dpr - oy) / ph * 2 - 1
-        cv = CRT_LEVEL["curve"]
+        cv = 0.0 if getattr(self, "software", False) else CRT_LEVEL["curve"]
         sx, sy = nx * (1 + cv * ny * ny), ny * (1 + cv * nx * nx)
         if abs(sx) > 1 or abs(sy) > 1:
             return None
@@ -381,7 +382,24 @@ class GameWidget(QOpenGLWidget):
         self.mouse_aim = False
         super().focusOutEvent(e)
 
-    # ---------------------------------------------------------------- Draw
+    def _hud_ui(self):
+        hud_mode = {"cleared": "play", "failing": "play"}.get(self.mode, self.mode)
+        return dict(mode=hud_mode, help=self.help, t=self.mode_t, best=self.best,
+                    options=self.options, sel=self.sel,
+                    mouse=self.mouse_scene if self.mouse_t < 2.5 else None, **self.end_info)
+
+
+class GameWidget(_GameMixin, QOpenGLWidget):
+    """GPU-Pfad: QOpenGLWidget + CRTRenderer (Bayer + CRT-Kette auf der GPU)."""
+
+    def initializeGL(self):
+        try:
+            self._gl = GLFuncs(self.context())
+            self.renderer = CRTRenderer(self._gl)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[error] GL-Init fehlgeschlagen: {exc}")
+        self.timer.start()
+
     def paintGL(self):
         if self.renderer is None:
             return
@@ -396,11 +414,7 @@ class GameWidget(QOpenGLWidget):
         img = self.scene.frame(self.world, dt, show_player=(m != "title"), fade=self.fade,
                                power=self.power, cam_override=cam)
         t1 = time.perf_counter()
-        hud_mode = {"cleared": "play", "failing": "play"}.get(m, m)
-        ui = dict(mode=hud_mode, help=self.help, t=self.mode_t, best=self.best,
-                  options=self.options, sel=self.sel, mouse=self.mouse_scene if self.mouse_t < 2.5 else None,
-                  **self.end_info)
-        himg = self.hud.render(self.world, self.scene, self._dt, ui)
+        himg = self.hud.render(self.world, self.scene, self._dt, self._hud_ui())
         t2 = time.perf_counter()
         self.renderer.render(self.defaultFramebufferObject(), fw, fh, img, self.vc, self.vr,
                              gamma=0.9, dt=self._dt, dpr=dpr, hud=himg)
@@ -417,4 +431,53 @@ class GameWidget(QOpenGLWidget):
                 print(f"[perf] {n / el:5.1f} fps  szene {pf['scene'] / n * 1000:4.1f} ms  "
                       f"hud {pf['hud'] / n * 1000:4.1f} ms  gl {pf['gl'] / n * 1000:4.1f} ms  "
                       f"modus {self.mode}", flush=True)
+                self._perf = dict(n=0, scene=0.0, hud=0.0, gl=0.0, t0=time.monotonic())
+
+
+class SoftwareGameWidget(_GameMixin, QWidget):
+    """CPU-Fallback ohne OpenGL 3.3: Dither + einfaches CRT direkt ins Fenster."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.software = True
+        self._ov = None
+        self._ov_size = None
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        self.timer.start()
+
+    def _overlay(self, w, h):
+        if self._ov_size != (w, h):
+            cell = min(w / self.vc, h / self.vr)
+            self._ov = sodither._scan_overlay(w, h, max(2, cell))
+            self._ov_size = (w, h)
+        return self._ov
+
+    def paintEvent(self, _e):
+        self._after_states()
+        m = self.mode
+        dt = 0.0 if (self.help or m == "pause") else self._dt
+        cam = self.title_cam if m == "title" else None
+        t0 = time.perf_counter()
+        img = self.scene.frame(self.world, dt, show_player=(m != "title"), fade=self.fade,
+                               power=self.power, cam_override=cam)
+        W, H = max(1, self.width()), max(1, self.height())
+        base = sodither.compose(img, W, H, self._overlay(W, H))
+        t1 = time.perf_counter()
+        himg = self.hud.render(self.world, self.scene, self._dt, self._hud_ui())
+        t2 = time.perf_counter()
+        p = QPainter(self)
+        p.drawImage(0, 0, base)
+        p.drawImage(0, 0, himg.scaled(W, H, Qt.AspectRatioMode.IgnoreAspectRatio,
+                                      Qt.TransformationMode.SmoothTransformation))
+        p.end()
+        if self._perf_on:
+            pf = self._perf
+            pf["n"] += 1
+            pf["scene"] += t1 - t0
+            pf["hud"] += t2 - t1
+            el = time.monotonic() - pf["t0"]
+            if el > 3.0:
+                n = pf["n"]
+                print(f"[perf] {n / el:5.1f} fps  szene+dither {pf['scene'] / n * 1000:4.1f} ms  "
+                      f"hud {pf['hud'] / n * 1000:4.1f} ms  modus {self.mode}", flush=True)
                 self._perf = dict(n=0, scene=0.0, hud=0.0, gl=0.0, t0=time.monotonic())
