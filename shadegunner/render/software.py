@@ -105,19 +105,74 @@ class Canvas:
                     run_start = ox
 
 
-PEDESTRIAN = [
-    "  .  ",
-    " ### ",
-    "#A#A#",
-    " ### ",
-    "#####",
-    " ### ",
-    " # # ",
-    " # # ",
-    " # # ",
+# Passanten-Silhouetten, mehrere Varianten. '#' = Körper, 'A' = Akzent (Augen),
+# '.' = ebenfalls Körper, ' ' = transparent. Bei kleiner Ausgabe zählt die Kontur,
+# nicht das Detail - die Varianten unterscheiden sich bewusst in Umriss und Breite.
+PEDESTRIANS = [
+    [  # schlank
+        "  .  ",
+        " ### ",
+        "#A#A#",
+        " ### ",
+        "#####",
+        " ### ",
+        " # # ",
+        " # # ",
+        " # # ",
+    ],
+    [  # breit, mit Schultern + Hut
+        "  ###  ",
+        " ##### ",
+        "##A#A##",
+        " ##### ",
+        " ##### ",
+        "  ###  ",
+        "  # #  ",
+        "  # #  ",
+        "  # #  ",
+        " #   # ",
+    ],
+    [  # schmal, langer Mantel
+        "  #  ",
+        " #A# ",
+        "  #  ",
+        " ### ",
+        "#####",
+        "#####",
+        " ### ",
+        " ### ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+    ],
+]
+
+# Spieler: eigene Figur (etwas breiter, klare Kontur)
+PLAYER_SPRITE = [
+    "  ###  ",
+    " ##### ",
+    "##A#A##",
+    " ##### ",
+    " ##### ",
+    " ##### ",
+    "  ###  ",
+    "  # #  ",
+    "  # #  ",
+    " #   # ",
 ]
 
 
-def draw_pedestrian(cav, x, y_ground, out_h, body, accent):
-    cav.blit(PEDESTRIAN, x - int(out_h * 5 / 18), y_ground - out_h, out_h,
-             {"#": body, "A": accent, ".": body})
+def _blit_sprite(cav, pattern, x, y_top, out_h, body, accent):
+    cols = max(len(r) for r in pattern)
+    half = int(out_h * cols / len(pattern) / 2)
+    cav.blit(pattern, x - half, y_top, out_h, {"#": body, "A": accent, ".": body})
+
+
+def draw_pedestrian(cav, x, y_ground, out_h, body, accent, variant=0):
+    pat = PEDESTRIANS[variant % len(PEDESTRIANS)]
+    _blit_sprite(cav, pat, x, y_ground - out_h, out_h, body, accent)
+
+
+def draw_player(cav, x, y_ground, out_h, body, accent):
+    _blit_sprite(cav, PLAYER_SPRITE, x, y_ground - out_h, out_h, body, accent)
+

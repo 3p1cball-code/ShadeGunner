@@ -185,15 +185,16 @@ class World:
     def project(self, actor, w, h):
         """Welt -> Bildschirm: (cx, ground_y, height_px).
 
-        Belt-Scroller-Projektion: Tiefe steuert Grundlinie und Größe; X wächst mit
-        der Tiefe, damit der Vordergrund optisch breiter wird als der Hintergrund.
+        Belt-Scroller-Projektion. Tiefe steuert Grundlinie UND Größe UND die
+        horizontale Skala: nahe Figuren sind größer und ziehen im gleichen Maße
+        schneller über den Schirm als ferne (Perspektive).
         """
         fy0 = int(config.FLOOR_TOP_Y * h)
         fy1 = int(config.FLOOR_BOTTOM_Y * h)
         d = actor.depth
         ground_y = fy0 + (fy1 - fy0) * d
         scale = 0.40 + 0.60 * d
-        span = config.VIEW_SPAN_NEAR * (0.45 + 0.55 * d)
-        cx = w * 0.5 + (actor.x - self.camera_x) / span * w
+        px_per_unit = (w / config.VIEW_SPAN_NEAR) * scale
+        cx = w * 0.5 + (actor.x - self.camera_x) * px_per_unit
         height = (h * 0.06 + h * 0.15 * d)
         return cx, ground_y, height

@@ -9,7 +9,7 @@ mit Parallax-Faktoren gezeichnet - kein Flackern, reproduzierbar.
 import random
 
 from .. import config
-from .software import Canvas, draw_pedestrian
+from .software import Canvas, draw_pedestrian, draw_player
 
 C = config.NOIR16
 VOID, NIGHT, NAVY, INDIGO = C[0], C[1], C[2], C[3]
@@ -18,7 +18,6 @@ ASH, PALE, WHITE = C[8], C[9], C[10]
 TEAL, CYAN, MAGENTA, AMBER, VIOLET = C[11], C[12], C[13], C[14], C[15]
 NEON = [CYAN, MAGENTA, AMBER, VIOLET, TEAL]
 
-# Parallax-Faktoren je Ebene (Anteil der Kamera-Bewegung)
 FAR_FACTOR = 0.12
 MID_FACTOR = 0.38
 RAIN_FACTOR = 0.06
@@ -32,6 +31,7 @@ def make_city(rng, w, h):
     W2 = 2 * w
     hz = int(config.HORIZON_Y * h)
 
+    # --- ferne Skyline: Silhouetten + spärliche Fenster + Dachaufbauten ---
     far, far_w = [], []
     x = -4
     while x < W2:
@@ -41,28 +41,65 @@ def make_city(rng, w, h):
         far.append((x, top, bw, bh + 2, NIGHT if rng.random() < 0.6 else NAVY))
         for wy in range(top + 4, hz - 3, 7):
             for wx in range(x + 3, x + bw - 2, 6):
-                if rng.random() < 0.12:
+                r = rng.random()
+                if r < 0.12:
                     far_w.append((wx, wy, INDIGO))
+                elif r < 0.16:
+                    far_w.append((wx, wy, SLATE))
+        if rng.random() < 0.45:
+            ax = x + rng.randint(2, max(2, bw - 2))
+            far.append((ax, top - rng.randint(4, 12), 1, rng.randint(4, 12), GRAPHITE))
+        if rng.random() < 0.35:
+            far.append((x + bw // 4, top - 3, max(2, bw // 2), 3, NIGHT))
         x += bw + rng.randint(2, 8)
 
-    mid, mid_w, signs = [], [], []
+    # --- mittlere Skyline: mehr Fenster, Antennen, Billboards, Neon ---
+    mid, mid_w, signs, tops = [], [], [], []
     x = -6
     while x < W2:
         bw = rng.randint(int(w * 0.07), int(w * 0.14))
         bh = rng.randint(int(h * 0.18), int(h * 0.44))
         top = hz - bh
         mid.append((x, top, bw, bh + 3, NAVY if rng.random() < 0.5 else INDIGO))
+        tops.append((x, top, bw))
         for wy in range(top + 5, hz - 3, 8):
             for wx in range(x + 3, x + bw - 2, 7):
-                if rng.random() < 0.18:
-                    mid_w.append((wx, wy, STEEL if rng.random() < 0.7 else BLUE))
+                r = rng.random()
+                if r < 0.16:
+                    mid_w.append((wx, wy, STEEL))
+                elif r < 0.22:
+                    mid_w.append((wx, wy, CYAN if rng.random() < 0.5 else BLUE))
+        if rng.random() < 0.6:
+            mid.append((x + bw // 3, top - 4, max(2, bw // 2), 4, GRAPHITE))
+        if rng.random() < 0.55:
+            aw = max(1, bw // 12)
+            ax = x + rng.randint(2, max(2, bw - aw - 2))
+            ah = rng.randint(6, 20)
+            mid.append((ax, top - ah, aw, ah, GRAPHITE))
+            mid.append((ax, top - ah, max(1, aw), 1, rng.choice(NEON)))
+        if rng.random() < 0.35:
+            bbw = max(5, bw // 2)
+            bbh = rng.randint(6, 13)
+            bbx = x + rng.randint(1, max(1, bw - bbw - 1))
+            bby = top + rng.randint(5, max(5, bh // 2))
+            mid.append((bbx - 1, bby - 1, bbw + 2, bbh + 2, GRAPHITE))
+            mid.append((bbx, bby, bbw, bbh, rng.choice(NEON)))
         if rng.random() < 0.6:
             nc = rng.choice(NEON)
             sx = x + rng.randint(2, max(2, bw - 6))
             sy = top + rng.randint(3, max(3, bh // 2))
             sh = rng.randint(int(bh * 0.25), int(bh * 0.6))
             signs.append((sx, sy, sh, nc))
+            mid.append((sx, sy, 3, sh, nc))
         x += bw + rng.randint(3, 12)
+
+    # Kabel/Leitungen zwischen benachbarten Dächern
+    for i in range(len(tops) - 1):
+        x0, t0, b0 = tops[i]
+        x1, t1, _b1 = tops[i + 1]
+        gap = x1 - (x0 + b0)
+        if 0 < gap < int(w * 0.12) and rng.random() < 0.4:
+            mid.append((x0 + b0, min(t0, t1) + 2, gap, 1, SLATE))
 
     return dict(w2=W2, far=far, far_w=far_w, mid=mid, mid_w=mid_w, signs=signs)
 
@@ -75,6 +112,7 @@ class Scene:
         self.cav = Canvas(w, h)
         self._zone = None
         self._city = None
+        self._glow = (44, 32, 64)
         self._rain_particles = [[random.random() * w, random.random() * h, random.randint(4, 9)]
                                 for _ in range(160)]
 
@@ -94,8 +132,7 @@ class Scene:
                  tuple(int(v * 1.6) for v in self._glow))
 
     def _layer(self, rects, wins, off):
-        cav, W2 = self.cav, self._city["w2"]
-        w = self.w
+        cav, W2, w = self.cav, self._city["w2"], self.w
         for (x, y, bw, bh, c) in rects:
             xx = int((x - off) % W2)
             if xx >= w or xx + bw <= 0:
@@ -112,6 +149,30 @@ class Scene:
         fy0 = int(config.FLOOR_TOP_Y * h)
         cav.vgrad(fy0, h, _STREET_TOP, _STREET_BOT)
         cav.hline(0, self.w, fy0, SLATE)
+
+    def _ground(self, off):
+        cav, w, h = self.cav, self.w, self.h
+        fy0 = int(config.FLOOR_TOP_Y * h)
+        off = off % w
+        # Fahrbahnstriche (scrollen mit)
+        for k in range(-1, 6):
+            x = int((k * 96 - off) % (w + 96)) - 48
+            cav.hline(x, x + 40, h - 18, (44, 50, 66))
+        # Fluchtlinien (statisch, lesen sich als Bordsteinkanten)
+        for fx in (0.14, 0.30, 0.70, 0.86):
+            xtop = int(w * 0.5 + (w * fx - w * 0.5) * 0.28)
+            xbot = int(w * fx)
+            n = h - fy0
+            for i in range(0, n + 1, 2):
+                f = i / n
+                cav.set(int(xtop + (xbot - xtop) * f), fy0 + i, (22, 26, 38))
+        # Pfützen-Glanz (scrollen mit)
+        rng = random.Random(9001)
+        for _ in range(22):
+            bx, py = rng.randint(0, w), rng.randint(fy0 + 6, h - 3)
+            ln = rng.randint(2, 6)
+            x = int((bx - off) % w)
+            cav.hline(x, x + ln, py, (28, 38, 58) if rng.random() < 0.7 else (56, 66, 96))
 
     def _reflections(self, off):
         cav, h = self.cav, self.h
@@ -145,12 +206,14 @@ class Scene:
             cav.rect(cx - hgt // 4, gy - 3, hgt // 2, 3, (18, 20, 30))
             cav.rect(cx - hgt // 4, gy - 3, hgt // 4, 2, a.accent)
             return
-        draw_pedestrian(cav, cx, gy, hgt, a.body, a.accent)
         if a.player:
+            draw_player(cav, cx, gy, hgt, a.body, a.accent)
             cav.rect(cx - 1, gy - hgt, 3, 2, WHITE)
-        elif a.scanned:
-            bw = max(3, hgt // 4)
-            cav.rect(cx - bw, gy - hgt - 2, bw * 2, 1, CYAN)
+        else:
+            draw_pedestrian(cav, cx, gy, hgt, a.body, a.accent, a.uid)
+            if a.scanned:
+                bw = max(3, hgt // 4)
+                cav.rect(cx - bw, gy - hgt - 2, bw * 2, 1, CYAN)
         if a.highlight_t > 0 and a.highlight != (0, 0, 0):
             cav.rect(cx - max(1, hgt // 6), gy - hgt - 4, max(3, hgt // 3), 1, a.highlight)
 
@@ -166,8 +229,7 @@ class Scene:
                 p[0] += w + 4
             elif p[0] > w + 2:
                 p[0] -= w + 4
-            x0 = int(p[0])
-            y0 = int(p[1])
+            x0, y0 = int(p[0]), int(p[1])
             for k in range(p[2]):
                 cav.set(x0 - k // 2, y0 + k, SLATE if k & 1 else (70, 76, 92))
 
@@ -179,6 +241,7 @@ class Scene:
         self._layer(self._city["far"], self._city["far_w"], off_far)
         self._layer(self._city["mid"], self._city["mid_w"], off_mid)
         self._street()
+        self._ground(world.camera_x * (self.w / config.VIEW_SPAN_NEAR) * 0.8)
         self._reflections(off_mid)
         self._actors(world)
         self._rain(dt, world.camera_x * RAIN_FACTOR)
