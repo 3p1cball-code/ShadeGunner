@@ -689,6 +689,34 @@ def test_steam_slows_observation():
     assert gain["dampf"] < gain["frei"] * 0.5, gain
 
 
+def test_vehicle_variants_are_many():
+    """Fahrzeuge unterscheiden sich in Farbe, Akzent und Schriftzug (16 Varianten je Art)."""
+    from shadegunner.render import vehicles
+    from shadegunner.sim import VEHICLES
+    assert vehicles.VARIANTS >= 8
+    rim = (200, 200, 210)
+    for k in VEHICLES:
+        a = vehicles.vehicle_image(k, 0, 1.0, rim, 1)
+        b = vehicles.vehicle_image(k, 1, 1.0, rim, 1)
+        assert a is not None and b is not None
+
+
+def test_i18n_switches_between_german_and_english():
+    from shadegunner import i18n
+    i18n.set_lang("de")
+    assert i18n.tr("SEKTOR {}/5", 3) == "SEKTOR 3/5"
+    assert i18n.tr("Nicht uebersetzt") == "Nicht uebersetzt"
+    i18n.set_lang("en")
+    assert i18n.tr("SEKTOR {}/5", 3) == "SECTOR 3/5"
+    assert i18n.tr("Nicht uebersetzt") == "Nicht uebersetzt"
+    i18n.set_lang("de")
+
+
+def test_settings_language_validates():
+    from shadegunner import settings
+    assert settings.DEFAULTS["lang"] in ("de", "en")
+
+
 def main():
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     fails = 0

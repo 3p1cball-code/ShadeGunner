@@ -13,7 +13,7 @@ from PyQt6.QtGui import QPainter
 from PyQt6.QtOpenGLWidgets import QOpenGLWidget
 from PyQt6.QtWidgets import QWidget
 
-from . import config, save, settings
+from . import config, i18n, save, settings
 from .audio import Audio
 from .hud import HUD, rank_of
 from .render import sodither
@@ -42,7 +42,8 @@ class _GameMixin:
     SoftwareGameWidget (QWidget + CPU-Dither). Nur die Darstellung unterscheidet sich.
     """
 
-    _SETTING_KEYS = ["music", "sfx", "fullscreen", "resolution", "scanlines", "renderer", "difficulty"]
+    _SETTING_KEYS = ["music", "sfx", "fullscreen", "resolution", "scanlines", "renderer",
+                     "difficulty", "lang"]
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -58,6 +59,7 @@ class _GameMixin:
         self.audio = Audio()
         self.best = save.load()
         self.settings = settings.load()
+        i18n.set_lang(self.settings.get("lang", "de"))
         self.settings_sel = 0
         self._settings_back = "title"
         self.audio.set_volumes(self.settings["music"], self.settings["sfx"])
@@ -304,6 +306,9 @@ class _GameMixin:
             cur = s.get("difficulty", "normal")
             i = order.index(cur) if cur in order else 1
             s["difficulty"] = order[(i + (1 if d > 0 else -1)) % len(order)]
+        elif key == "lang":
+            s["lang"] = "en" if s.get("lang") != "en" else "de"
+            i18n.set_lang(s["lang"])
         elif key == "renderer":
             s["renderer"] = "software" if s.get("renderer") != "software" else "auto"
         settings.save(s)

@@ -14,6 +14,7 @@ import random
 from . import config, persp, procgen
 from .detection import ORDER, STRONG_TELLS, TELLS, WEAK_TELLS, confidence
 from .entities import Actor
+from .i18n import tr
 from .render.sprites import COATS, PLAYER_LOOK, describe, frame_count, random_look
 
 DU = config.DEPTH_UNITS
@@ -410,7 +411,7 @@ class World:
                 self.scan_t = -1.0
                 self.scan_target = None
                 self.events.append(("scan_abort",))
-                self._say("Scan abgebrochen.")
+                self._say(tr("Scan abgebrochen."))
             else:
                 p.facing = 1 if t.x >= p.x else -1
                 if self.scan_t >= config.SCAN_TIME * m["scan_time"]:
@@ -428,7 +429,7 @@ class World:
             self.aim_t = 0.0
             self.blocker = None
             self.events.append(("holster",))
-            self._say("Waffe gesenkt - Schuss abgebrochen.")
+            self._say(tr("Waffe gesenkt - Schuss abgebrochen."))
         if not aim:
             self.aim_latch = False
         aim = aim and not self.aim_latch
@@ -497,7 +498,7 @@ class World:
         if self._gate_msg_cd <= 0:
             self._gate_msg_cd = 2.5
             self.events.append(("gate_locked",))
-            self._say(f"Ausgang gesperrt: Auftrag {self.stats['reps']}/{self.quota}.")
+            self._say(tr("Ausgang gesperrt: Auftrag {}/{}.", self.stats["reps"], self.quota))
 
     # ------------------------------------------------------------------ Zielerfassung
     def _target_ok(self, a):
@@ -628,7 +629,7 @@ class World:
             self._say("Niemand in Rufweite angesprochen.")
             return "no_target"
         self.talk_cd = config.TALK_CD
-        self.floater(self.rng.choice(TALK_LINES), p, (255, 255, 255), 1.4)
+        self.floater(tr(self.rng.choice(TALK_LINES)), p, (255, 255, 255), 1.4)
         self.events.append(("talk", t.uid))
         self.reactions.append([t.react_t + 0.1, t, "talk"])
         self.unrest = min(1.0, self.unrest + 0.03)
@@ -649,7 +650,7 @@ class World:
         self.shout_cd = config.SHOUT_CD * self.run.mods["shout_cd"]
         self.wave = dict(x=p.x, depth=p.depth, r=0.0, R=R, t=0.0)
         self.events.append(("shout", p.x, R))
-        self.floater(self.rng.choice(SHOUT_LINES), p, (255, 255, 255), 1.5)
+        self.floater(tr(self.rng.choice(SHOUT_LINES)), p, (255, 255, 255), 1.5)
         for a in self.living():
             if a.boss or a.state in ("flee", "attack", "punch", "leap"):
                 continue
@@ -681,7 +682,7 @@ class World:
                 self._react(a, kind)
         if not self.reactions and self.shout_count:
             c = self.shout_count
-            self._say(f"Ruf: {c['duck']} in Deckung, {c['freeze']} reglos, {c['run']} rennen.")
+            self._say(tr("Ruf: {} in Deckung, {} reglos, {} rennen.", c["duck"], c["freeze"], c["run"]))
             self.shout_count = None
 
     def _react(self, a, kind):
@@ -706,16 +707,16 @@ class World:
         if a.tells.get("stimulus"):
             a.state, a.timer, a.vx = "freeze", dur, 0.0        # starrt den Rufer an
             if new and (kind == "talk" or a is self.target or self.dist(p, a) < config.OBSERVE_RANGE):
-                self.floater("REGLOS", a, (255, 138, 44), 1.8)
+                self.floater(tr("REGLOS"), a, (255, 138, 44), 1.8)
                 if a is self.target:
                     self.events.append(("tell", a.uid, "stimulus"))
             c["freeze"] += 1
         elif kind == "talk":
             a.state, a.timer, a.vx = "hands", rng.uniform(2.2, 3.2), 0.0
             if not a.is_replicant or rng.random() < 0.8:
-                self.floater(rng.choice(TALK_ANSWERS), a, (162, 168, 180), 1.6)
+                self.floater(tr(rng.choice(TALK_ANSWERS)), a, (162, 168, 180), 1.6)
             if new and a is self.target:
-                self.floater("REIZ: NORMAL", a, (162, 168, 180), 1.4)
+                self.floater(tr("REIZ: NORMAL"), a, (162, 168, 180), 1.4)
         elif not a.is_replicant and rng.random() < config.SHOUT_SCATTER + 0.5 * u:
             self._panic_one(a, p.x)                               # rennt lieber weg
             c["run"] += 1
@@ -731,14 +732,14 @@ class World:
             return "airborne", None
         if self.scan_charges < 1.0:
             self.events.append(("no_charge",))
-            self._say("Keine Scan-Ladung.")
+            self._say(tr("Keine Scan-Ladung."))
             return "no_charge", None
         t = self.target
         if t is not None and self.dist(self.player, t) > config.SCAN_RANGE:
             # Gewähltes Ziel bleibt gewählt - kein stilles Umschwenken auf jemand anderen
             self.events.append(("no_target",))
-            self._say("Ziel zu weit für den Scan - näher ran.")
-            self.floater("ZU WEIT", t, (162, 168, 180), 1.0)
+            self._say(tr("Ziel zu weit für den Scan - näher ran."))
+            self.floater(tr("ZU WEIT"), t, (162, 168, 180), 1.0)
             return "too_far", t
         if t is None:
             cands = [a for a in self.living() if not a.scanned and self.dist(self.player, a) <= config.SCAN_RANGE]
@@ -806,7 +807,7 @@ class World:
         if a.boss:
             if a.boss_invuln:               # während seiner Rede abgewehrt
                 self.events.append(("boss_blocked",))
-                self.floater("ABGEWEHRT", a, (162, 168, 180), 0.9)
+                self.floater(tr("ABGEWEHRT"), a, (162, 168, 180), 0.9)
                 return "blocked"
             a.hp -= 1
             a.flash_t = 0.3
@@ -815,7 +816,7 @@ class World:
             if a.hp <= 0:
                 self._kill(a)
                 self.events.append(("boss_dead",))
-                self._say("ROY deaktiviert.")
+                self._say(tr("ROY deaktiviert."))
                 return "boss_dead"
             self.boss_hits += 1
             if self.boss_hits >= config.ROY_PER_LINE and self.boss_line < len(config.ROY_LINES) - 1:
@@ -829,7 +830,7 @@ class World:
             a.hp -= 1
             a.flash_t = 0.3
             a.knock = 60.0 * (1 if a.x >= self.player.x else -1)
-            self.floater("ZÄH! NOCH EINMAL", a, (255, 138, 44), 1.4)
+            self.floater(tr("ZÄH! NOCH EINMAL"), a, (255, 138, 44), 1.4)
             self.events.append(("tough", a.uid))
             a.alert = False
             a.aggressive = True
@@ -865,33 +866,33 @@ class World:
             self.stats["score"] += pts
             self.stats["reps"] += 1
             self.run.totals["reps"] += 1
-            self.floater(f"REPLIKANT +{pts}", a, (64, 210, 220), 2.0)
+            self.floater(tr("REPLIKANT +{}", pts), a, (64, 210, 220), 2.0)
             if self.combo > 1:
-                self.floater(f"KETTE X{self.combo}", a, (255, 138, 44), 1.6)
+                self.floater(tr("KETTE X{}", self.combo), a, (255, 138, 44), 1.6)
             if a.bounty:
                 self.run.score += config.POINTS_BOUNTY
                 self.stats["score"] += config.POINTS_BOUNTY
                 self.stats["bounty"] = True
-                self.floater(f"KOPFGELD {a.name} +{config.POINTS_BOUNTY}", a, (255, 138, 44), 2.6)
+                self.floater(tr("KOPFGELD {} +{}", a.name, config.POINTS_BOUNTY), a, (255, 138, 44), 2.6)
                 self.events.append(("bounty", a.uid))
             self.combo = min(config.COMBO_MAX, self.combo + 1)
-            self._say(f"Kopfgeld kassiert: {a.name}." if a.bounty else "Replikant deaktiviert.")
+            self._say(tr("Kopfgeld kassiert: {}.", a.name) if a.bounty else tr("Replikant deaktiviert."))
             self.events.append(("kill", a.uid, True))
             if self.stats["reps"] == self.quota:
                 self.events.append(("quota",))
-                self._say("Auftrag erfüllt - Ausgang offen.")
+                self._say(tr("Auftrag erfüllt - Ausgang offen."))
             return "replicant"
         watched = config.SUSPICION_WATCHED if self.watched else 1.0
         self.suspicion = min(1.0, self.suspicion + config.SUSPICION_PER_CIVILIAN * self.run.mods["susp"] * watched)
         if self.watched:
-            self.floater("VOR DEN AUGEN DER POLIZEI", a, (224, 72, 90), 2.2)
+            self.floater(tr("VOR DEN AUGEN DER POLIZEI"), a, (224, 72, 90), 2.2)
         self.run.score += config.POINTS_CIVILIAN
         self.stats["score"] += config.POINTS_CIVILIAN
         self.stats["civs"] += 1
         self.run.totals["civs"] += 1
         self.combo = 1
-        self.floater(f"MENSCH  {config.POINTS_CIVILIAN}", a, (224, 72, 90), 2.2)
-        self._say("MENSCH getötet! Verdacht steigt.")
+        self.floater(tr("MENSCH  {}", config.POINTS_CIVILIAN), a, (224, 72, 90), 2.2)
+        self._say(tr("MENSCH getötet! Verdacht steigt."))
         self.events.append(("kill", a.uid, False))
         if self.suspicion >= 1.0:
             self._fail("suspicion")
@@ -914,7 +915,7 @@ class World:
         self.scan_target = None
         self.aiming = False
         self.events.append(("hurt", p.hp))
-        self.floater(text, p, (224, 72, 90), 1.4)
+        self.floater(tr(text), p, (224, 72, 90), 1.4)
         if p.hp <= 0:
             self._fail("hp")
         return True
@@ -1127,7 +1128,7 @@ class World:
         p.knock = 55.0 if p.x >= v["x"] else -55.0
         self._push_out_of_lane(lane)
         self.scan_t, self.scan_target, self.aiming = -1.0, None, False
-        self.floater("REMPLER", p, (255, 182, 72), 1.1)
+        self.floater(tr("REMPLER"), p, (255, 182, 72), 1.1)
         self.events.append(("bump",))
 
     # ------------------------------------------------------------------ Dampf
@@ -1172,7 +1173,7 @@ class World:
                                        mode="land" if land else "fly", phase="fly", alt=1.0, face=dr,
                                        obs=None, land_t=0.0)
                     self.events.append(("patrol",))
-                    self._say("Polizei-Spinner mit Suchlicht über der Straße.")
+                    self._say(tr("Polizei-Spinner mit Suchlicht über der Straße."))
             self.watched = False
             for a in self.actors:
                 a.lit_t = 0.0
@@ -1260,7 +1261,7 @@ class World:
             P["phase"], P["lx"] = "descend", lx
             P["face"] = 1 if p.x >= lx else -1
             self.events.append(("spinner_land", P["face"]))
-            self._say("Polizei-Spinner setzt zur Landung an - Kontrolle!")
+            self._say(tr("Polizei-Spinner setzt zur Landung an - Kontrolle!"))
         elif ph == "descend":
             dx = P["lx"] - P["x"]
             P["x"] += max(-90.0 * dt, min(90.0 * dt, dx))
@@ -1314,7 +1315,7 @@ class World:
         if "pupils" in a.revealed or self.dist(self.player, a) > rng_:
             return
         a.revealed.add("pupils")
-        self.floater(text, a, (255, 138, 44), 1.6)
+        self.floater(tr(text), a, (255, 138, 44), 1.6)
         self.events.append(("tell", a.uid, "pupils"))
 
     # ------------------------------------------------------------------ Ramen
@@ -1329,11 +1330,11 @@ class World:
                 if r["used"]:
                     continue
                 if p.hp >= self.run.max_hp:
-                    self.floater("FUTATSU DE JUBUN!", cook, (214, 220, 226), 2.4)
-                    self._say("Koch: Zwei reichen. (Integrität ist voll.)")
+                    self.floater(tr("FUTATSU DE JUBUN!"), cook, (214, 220, 226), 2.4)
+                    self._say(tr("Koch: Zwei reichen. (Integrität ist voll.)"))
                 else:
-                    self.floater("IRASSHAI! PLATZ FREI!", cook, (255, 138, 44), 2.4)
-                    self._say("Koch: Akimashita! Ein Platz an der Theke ist frei.")
+                    self.floater(tr("IRASSHAI! PLATZ FREI!"), cook, (255, 138, 44), 2.4)
+                    self._say(tr("Koch: Akimashita! Ein Platz an der Theke ist frei."))
                 self.events.append(("greet",))
         if p.hp >= self.run.max_hp:
             for r in self.ramen:
@@ -1350,8 +1351,8 @@ class World:
                     p.hp = min(self.run.max_hp, p.hp + 1)
                     self.run.hp = p.hp
                     self.events.append(("ramen",))
-                    self.floater("RAMEN  +1 ♥", p, (255, 138, 44), 2.2)
-                    self._say("Am Nudelstand gestärkt: +1 Integrität.")
+                    self.floater(tr("RAMEN  +1 ♥"), p, (255, 138, 44), 2.2)
+                    self._say(tr("Am Nudelstand gestärkt: +1 Integrität."))
             else:
                 r["t"] = max(0.0, r["t"] - dt)
 
@@ -1381,8 +1382,8 @@ class World:
             self.run.score += config.POINTS_ORIGAMI
             self.stats["score"] += config.POINTS_ORIGAMI
             self.scan_charges = float(self.scan_max)
-            self.floater(f"ORIGAMI: {o['name']}  +{config.POINTS_ORIGAMI}", p, (214, 220, 226), 2.6)
-            self._say("Gaff war hier. Scanner wieder voll geladen.")
+            self.floater(tr("ORIGAMI: {}  +{}", tr(o["name"]), config.POINTS_ORIGAMI), p, (214, 220, 226), 2.6)
+            self._say(tr("Gaff war hier. Scanner wieder voll geladen."))
             self.events.append(("origami",))
 
     # ------------------------------------------------------------------ Endboss ROY
@@ -1446,7 +1447,7 @@ class World:
             self.blackout_at = None
             self.blackout_t = 9.0
             self.events.append(("blackout",))
-            self._say("Stromausfall! Im Dunkeln leuchten Replikantenaugen.")
+            self._say(tr("Stromausfall! Im Dunkeln leuchten Replikantenaugen."))
         if self.blackout_t > 0.0:
             self.blackout_t -= dt
             if self.blackout_t <= 0.0:
@@ -1629,7 +1630,7 @@ class World:
                         if p.z < config.JUMP_SAFE_Z:
                             self.hurt_player(a)
                         else:
-                            self.floater("AUSGEWICHEN", p, (64, 210, 220), 0.9)
+                            self.floater(tr("AUSGEWICHEN"), p, (64, 210, 220), 0.9)
                 if a.timer <= 0:
                     a.state = "attack"
             # Auf Zielen reagieren
@@ -1682,7 +1683,7 @@ class World:
             self.suspicion = min(1.0, self.suspicion + config.SUSPICION_PER_ESCAPE)
             self.combo = 1
             self.events.append(("escape", a.uid))
-            self._say("Ein Replikant ist entkommen.")
+            self._say(tr("Ein Replikant ist entkommen."))
 
     def _update_dead(self, dt):
         for a in self.actors:
@@ -1714,9 +1715,9 @@ class World:
                     t = remaining[0]
                     a.revealed.add(t)
                     if focus:
-                        lbl = TELLS[t][3]
+                        lbl = tr(TELLS[t][3])
                         present = a.tells.get(t)
-                        self.floater(f"{lbl}: {'AUFFÄLLIG' if present else 'NORMAL'}", a,
+                        self.floater(tr("{}: AUFFÄLLIG", lbl) if present else tr("{}: NORMAL", lbl), a,
                                      (255, 138, 44) if present else (162, 168, 180), 1.6)
                         self.events.append(("tell", a.uid, t))
 
@@ -1797,7 +1798,7 @@ class World:
             self.run.totals[k] += self.stats[k]
         self.run.totals["time"] += self.stats["time"]
         self.events.append(("zone_clear", missed))
-        self._say(f"Zone '{self.zone['name']}' geschafft.")
+        self._say(tr("Zone '{}' geschafft.", tr(self.zone["name"])))
 
     def next_world(self, seed=None):
         """Neue World für die nächste Zone (oder None, wenn Tyrell geschafft)."""

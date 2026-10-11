@@ -1,144 +1,156 @@
 # ShadeGunner
 
-16-Farben-Cyberpunk-Sidescroller im Blade-Runner-Universum. Als Blade Runner
-arbeitest du dich von den Außenbezirken bis ins Tyrell-HQ und musst
-**Replikanten unter Passanten erkennen, scannen und deaktivieren** – und mit den
-Folgen deiner Entscheidungen leben.
+**English** · [Deutsch](README.de.md)
 
-Gebaut auf dem `asciiplay`-Renderpfad: Bayer-Dither gegen eine feste 16-Farben-
-Palette plus CRT-Kette (Wölbung, Scanlines, Schattenmaske, Bloom, Nachleuchten).
-Die Szene wird auf der CPU komponiert, Figuren und Sound sind prozedural, die
-Post-Verarbeitung läuft auf der GPU. Python 3 + PyQt6.
+A 16-color cyberpunk side-scroller set in the Blade Runner universe. As a Blade
+Runner you work your way from the outskirts to the Tyrell HQ, and you have to
+**spot, scan and deactivate replicants among the passers-by** – and live with the
+consequences of your decisions.
+
+Built on the `asciiplay` render path: Bayer dithering against a fixed 16-color
+palette plus a CRT chain (curvature, scanlines, shadow mask, bloom, phosphor
+persistence). The scene is composed on the CPU, figures and sound are procedural,
+post-processing runs on the GPU. Python 3 + PyQt6. UI and in-game text are
+available in **German and English** (switchable in the settings).
 
 ## Screenshots
 
 | | |
 |---|---|
-| ![Außenbezirk](screenshots/level0.png) | ![Vorstadt](screenshots/level1.png) |
-| ![Innenstadt](screenshots/level2.png) | ![Hafen](screenshots/level3.png) |
+| ![Main menu](screenshots/menu.png) | ![Settings](screenshots/settings.png) |
+| ![Outskirts](screenshots/level0.png) | ![Suburbs](screenshots/level1.png) |
+| ![Downtown](screenshots/level2.png) | ![Harbor](screenshots/level3.png) |
 
 ![Tyrell](screenshots/level4.png)
 
-## Kern-Loop
+## Core loop
 
-Beobachten → Ziel wählen → **scannen** (begrenzte Ladungen) → **Tell-Konfidenz**
-(Naive Bayes, über den echten Replikantenanteil der Zone kalibriert) →
-zielen/schießen (Passanten in der Schusslinie fangen die Kugel) → Quote erfüllen,
-Ausgang öffnet sich → 1 aus 3 Upgrades. **Zivilisten töten ⇒ Verdacht** (ab 100 %
-ist der Einsatz verloren).
+Observe → pick a target → **scan** (limited charges) → **tell confidence**
+(Naive Bayes, calibrated against the zone's real replicant ratio) → aim/shoot
+(passers-by in the line of fire catch the bullet) → meet the quota, the exit
+opens → 1 of 3 upgrades. **Killing civilians ⇒ suspicion** (at 100 % the run is
+lost).
 
-- **Zonen:** Außenbezirk → Vorstadt → Innenstadt → Hafen → Tyrell.
-- **Abwechslung:** Springen (über Hindernisse, Schlägen ausweichen), Verkehr auf zwei
-  Fahrspuren, Polizei-Suchlicht (macht Augenreflexe sichtbar), Stromausfall,
-  Kopfgeld-Replikanten, **landende Polizei-Spinner** (Abwind schiebt alle weg, danach
-  Kontrolle mit Suchlicht vom Boden aus; der Spinner sperrt den Mittelstreifen),
-  **Gaffs Origami** (eine Figur pro Zone: Huhn, Streichholzmann, Schaf, Kranich, Einhorn;
-  Fund = Punkte + Scanner voll) und **Nudelbars** im Stil des White Dragon (Theke,
-  Gäste, Koch, Neon-Drache; kurz an der Theke stehen füllt ein Herz auf).
-- **Volle Straßen – und jeder ist Teil der Simulation:** Passanten auf der Fahrbahn,
-  Flaneure auf dem hinteren Gehweg vor den Läden und **Gruppen, die herumstehen und
-  reden**. Alle sind beobachtbar und scanbar, Replikanten verstecken sich in jeder Sorte.
-  Schwierigkeit LEICHT/NORMAL/SCHWER skaliert die Menge.
-- **Ansprechen und Rufen (`V`):** Kurz tippen spricht das Ziel an („Sie da! Stehen
-  bleiben!“): Menschen heben die Hände und antworten, wer den REIZ-Tell hat, starrt nur.
-  Halten lädt einen Ruf an die Menge, beim Loslassen läuft „LAPD! Alle runter!“ als
-  sichtbare Welle über die Straße; jeder reagiert, wenn sie ihn erreicht, mit eigener
-  Schrecksekunde. Wer den REIZ-Tell hat, bleibt **reglos stehen**, die anderen gehen **in
-  Deckung** (die Kugel geht über Geduckte hinweg) oder rennen. Jeder Ruf erhöht die
-  **Unruhe** der Straße: mehr Leute rennen, Replikanten werden nervös und hauen ab.
-- **Kein Fahrzeug gleicht dem anderen:** Korosseriefarben, Akzentfarben (Zierlinien,
-  Zweifarbdach, Schweller, Rallyestreifen), Unterboden-Neon, Helligkeit und Schriftzüge
-  (Tyrell, Shimata, Pan Am, Off-World, Nexus 6, Eye Works …) werden je Fahrzeug
-  kombiniert – auch Taxi-Dachschilder, Bus-Werbeband, Buslinie (z. B. „12 HADES“) und
-  Laster-Aufschrift sind zufällig. 16 Varianten je Art.
-- **Verkehr wird zur Kolonne:** Mit jedem Viertel fahren mehr Fahrzeuge – und je dichter
-  der Verkehr, desto langsamer fließt er: Stop-and-go, haltende Taxis, Stau-Hupen, in der
-  Innenstadt meist 5–7 Fahrzeuge im Bild. Und je langsamer und voller, desto **leiser**
-  die Motoren. Stehst du in der Spur, hupt der Fahrer und **bremst** ab – angefahren wirst
-  du nur noch, wenn du in letzter Sekunde vors Auto läufst (ganz vorn ist es wirklich
-  gefährlich, im dichten Innenstadtverkehr kaum noch). Läufst du seitlich gegen ein Auto,
-  gibt es nur einen kurzen **Rempler** (Stun), kein Herz. Am Fahrbahnrand **parken** Autos, Taxis, Laster
-  (manche mit Warnblinker); sie sind zu hoch zum Drüberspringen und verdecken, wer
-  dahinter steht.
-- **Dampfende Gullis:** wie in New York – Gullideckel mit Glut im Spalt und gestreifte
-  Dampfschlote, die in Schüben qualmen. Im Dampf sieht man fast nichts: Wer dort steht,
-  lässt sich kaum beobachten.
-- **Eigene Musik je Viertel:** Außenbezirk mit dem Titelthema, danach mit jeder Zone
-  dichter (Arpeggien, Chor, Nebelhorn und Hafenmetall, Tyrell groß und hell). Dazu eine
-  taktgleiche **Rhythmus-Spur** – vom Herzschlag in der Vorstadt bis zum treibenden
-  Sequenzer in Tyrell –, die mit der Spannung lauter wird (Zielen, Unruhe, Flucht,
-  Verdacht, ROY) und langsam wieder abklingt.
-- **Holografische Ballerinas** (Blade Runner 2049): riesige Tänzerinnen über den Dächern
-  und kleine auf Projektorsockeln am Gehweg – Pirouette, Seconde, Arabeske mit Promenade,
-  Scanlines, Aussetzer, Glitches; im Stromausfall gehen sie aus.
-- **Verkehr nach Syd Mead:** Polizei-Spinner mit Kapsel-Kanzel und Radgondeln,
-  Deckard-Sedan, Metrokab mit Glas-Dom, Sebastians Armadillo-Laster, Aerial-Limousine,
-  Stadtbus voller Fahrgäste, Motorrad mit Radscheiben.
-- **Endboss:** In Tyrell tritt **ROY** auf. Er redet seine Sprüche (dabei
-  unverwundbar) und verträgt zwischen den Sätzen Treffer. Das Tor öffnet erst,
-  wenn er liegt.
+- **Zones:** Outskirts → Suburbs → Downtown → Harbor → Tyrell.
+- **Variety:** jumping (over obstacles, dodging blows), traffic on two lanes,
+  police searchlight (reveals eye reflexes), blackouts, bounty replicants,
+  **landing police spinners** (the downdraft pushes everyone aside, then a
+  ground check with a searchlight; the spinner blocks the median),
+  **Gaff's origami** (one figure per zone: chicken, matchstick man, sheep,
+  crane, unicorn; finding one = points + scanner refilled) and **noodle bars**
+  in the White Dragon style (counter, patrons, cook, neon dragon; standing at
+  the counter briefly refills one heart).
+- **Full streets – and everyone is part of the simulation:** passers-by on the
+  road, strollers on the rear sidewalk in front of the shops, and **groups
+  standing around talking**. All of them can be observed and scanned; replicants
+  hide in every kind. Difficulty EASY/NORMAL/HARD scales the crowd.
+- **Addressing and shouting (`V`):** a short tap addresses the target ("You
+  there! Stand still!"): humans raise their hands and answer, whoever has the
+  STIMULUS tell just stares. Holding charges a shout to the crowd; on release,
+  "LAPD! Everyone down!" rolls across the street as a visible wave, and each
+  person reacts with their own moment of shock as it reaches them. Whoever has
+  the STIMULUS tell stays **motionless**; the others **take cover** (the bullet
+  passes over anyone crouching) or run. Every shout raises the street's
+  **unrest**: more people run, replicants get nervous and bolt.
+- **No two vehicles look alike:** body colors, accent colors (trim lines,
+  two-tone roofs, skirts, racing stripes), underglow, brightness and lettering
+  (Tyrell, Shimata, Pan Am, Off-World, Nexus 6, Eye Works …) are combined per
+  vehicle – taxi roof signs, bus ad banners, bus route (e.g. "12 HADES") and
+  truck lettering are random too. 16 variants per type.
+- **Traffic turns into a column:** every quarter has more vehicles – and the
+  denser the traffic, the slower it flows: stop-and-go, halted taxis, jam horns,
+  usually 5–7 vehicles on screen downtown. And the slower and fuller it is, the
+  **quieter** the engines. If you stand in a lane the driver honks and **brakes**
+  – you only get run over if you dart in front of a car at the last second
+  (truly dangerous up front, barely so in dense downtown traffic). Walk into a
+  car from the side and you only get a brief **bump** (stun), no heart lost.
+  Along the curb cars, taxis and trucks **park** (some with hazard lights); they
+  are too tall to jump over and hide whoever is standing behind them.
+- **Steaming manholes:** like in New York – manhole covers glowing in the crack
+  and striped steam stacks that puff in bursts. In the steam you can barely see
+  anything: whoever stands there is hard to observe.
+- **Own music per quarter:** the outskirts with the title theme, then denser
+  with each zone (arpeggios, choir, foghorn and harbor metal, Tyrell big and
+  bright). Plus a beat-locked **rhythm track** – from a heartbeat in the suburbs
+  to a driving sequencer in Tyrell – that grows louder with tension (aiming,
+  unrest, flight, suspicion, ROY) and slowly fades again.
+- **Holographic ballerinas** (Blade Runner 2049): giant dancers above the roofs
+  and small ones on projector pedestals on the sidewalk – pirouette, seconde,
+  arabesque with promenade, scanlines, dropouts, glitches; they go dark during a
+  blackout.
+- **Syd Mead traffic:** police spinner with a capsule cockpit and wheel pods,
+  Deckard's sedan, metro-cab with a glass dome, Sebastian's armadillo truck,
+  aerial limousine, a city bus full of passengers, a motorcycle with disc wheels.
+- **Final boss:** in Tyrell, **ROY** appears. He delivers his lines (invulnerable
+  while speaking) and takes hits between sentences. The gate only opens once he
+  is down.
 
-## Steuerung
+## Controls
 
-| Taste | Aktion |
+| Key | Action |
 |---|---|
-| `A/D`, `W/S` (Pfeile) | gehen, Tiefe (nah/fern) |
-| `Shift` | sprinten |
-| `Space` | springen |
-| Maus zeigen / klicken | Ziel wählen |
-| `Q` / `Tab` / Mausrad | Ziel wechseln |
-| `R` / rechte Maustaste | gewähltes Ziel scannen |
-| `E` / linke Maustaste | halten = zielen, loslassen = schießen |
-| `C` / rechte Maustaste | Schuss abbrechen (Waffe senken) |
-| `V` / mittlere Maustaste | tippen = Ziel ansprechen, halten + loslassen = Ruf „LAPD! Alle runter!“ |
-| `P` Pause · `H` Hilfe · `F` Vollbild · `M` Ton · `S` Einstellungen (Titel/Pause) | |
+| `A/D`, `W/S` (arrows) | walk, depth (near/far) |
+| `Shift` | sprint |
+| `Space` | jump |
+| move / click mouse | pick target |
+| `Q` / `Tab` / wheel | cycle target |
+| `R` / right mouse button | scan selected target |
+| `E` / left mouse button | hold = aim, release = fire |
+| `C` / right mouse button | cancel shot (lower weapon) |
+| `V` / middle mouse button | tap = address target, hold + release = shout "LAPD! Everyone down!" |
+| `P` pause · `H` help · `F` fullscreen · `M` sound · `S` settings (title/pause) | |
 
-## Start
+## Running
 
 ```bash
 pip install -r requirements.txt
-python3 -m shadegunner            # oder: tools/run.sh
+python3 -m shadegunner            # or: tools/run.sh
 ```
 
-Beim ersten Start wird der Soundtrack einmalig (~11 s) nach
-`~/.cache/shadegunner/audio-v2/` erzeugt; danach startet es sofort.
-Abschalten: `SHADEGUNNER_NOSOUND=1`.
+On first launch the soundtrack is generated once (~11 s) into
+`~/.cache/shadegunner/audio-v2/`; after that it starts immediately.
+To disable: `SHADEGUNNER_NOSOUND=1`.
 
 ## Windows
 
-Zwei Wege:
+Two ways:
 
-1. **Aus dem Quelltext** – einmalig `install.bat` (installiert PyQt6 und numpy),
-   danach starten mit `tools\run.bat`.
-2. **Eigenständige `.exe`** (kein Python nötig, der Weg für Steam):
-   `tools\build_windows.bat` baut mit PyInstaller `dist\ShadeGunner\ShadeGunner.exe`.
-   Diesen kompletten Ordner an Steam ausliefern.
-   Wichtig: PyInstaller kann eine Windows-`.exe` **nur auf Windows** erzeugen –
-   der Build muss also auf einem Windows-Rechner laufen (die Spec `shadegunner.spec`
-   liegt bei).
+1. **From source** – run `install.bat` once (installs PyQt6 and numpy), then
+   start with `tools\run.bat`.
+2. **Standalone `.exe`** (no Python needed, the way to go for Steam):
+   `tools\build_windows.bat` builds `dist\ShadeGunner\ShadeGunner.exe` with
+   PyInstaller. Ship this whole folder to Steam.
+   Important: PyInstaller can produce a Windows `.exe` **only on Windows** – the
+   build therefore has to run on a Windows machine (the spec `shadegunner.spec`
+   is included).
 
-Auf Windows liegen Speicherstand unter `%APPDATA%\shadegunner\` und der
-Klang-Cache unter `%LOCALAPPDATA%\shadegunner\`.
+On Windows the save lives under `%APPDATA%\shadegunner\` and the sound cache
+under `%LOCALAPPDATA%\shadegunner\`.
 
-## Technik
+## Technical
 
-- **Renderpfade:** Standard ist OpenGL 3.3 (GPU: Bayer-Dither + CRT-Kette). Fehlt
-  OpenGL 3.3 (VM, Server, alte/keine GPU), schaltet das Spiel automatisch auf einen
-  **CPU-Fallback** um (Dither + Scanlines + Vignette, ~25–30 fps). Erzwingbar mit
-  `--software` oder `SHADEGUNNER_SOFTWARE=1` (braucht numpy).
-- Interne (Dither-)Auflösung 640×360, wird per CRT/Anzeige hochskaliert.
-- Palette `noir16` (eigene Noir-Palette) als Standard.
-- Das Spiel selbst ist **numpy-frei**; numpy wird nur zur Klang-Erzeugung genutzt
-  (mit Fallback ohne numpy).
-- **Einstellungen** (Musik, Effekte, Vollbild, **Auflösung**, Scanlines, Renderer) liegen
-  neben dem Spielstand (`%APPDATA%\shadegunner\settings.json` bzw. XDG-Pfad). Im Fenster
-  bekommt das Spiel exakt die gewählte Auflösung (zentriert); im Vollbild gilt die
-  Bildschirmauflösung.
-- Tests: `python3 tests/test_sim.py` (Simulation, ohne GL).
+- **Render paths:** the default is OpenGL 3.3 (GPU: Bayer dither + CRT chain).
+  If OpenGL 3.3 is missing (VM, server, old/no GPU), the game switches
+  automatically to a **CPU fallback** (dither + scanlines + vignette, ~25–30 fps).
+  Can be forced with `--software` or `SHADEGUNNER_SOFTWARE=1` (needs numpy).
+- Internal (dither) resolution 640×360, upscaled by the CRT/display chain.
+- Palette `noir16` (a custom noir palette) by default.
+- The game itself is **numpy-free**; numpy is only used for sound generation
+  (with a fallback without numpy).
+- **Settings** (music, effects, fullscreen, **resolution**, scanlines,
+  **language**, difficulty, renderer) live next to the save
+  (`%APPDATA%\shadegunner\settings.json` or the XDG path). In windowed mode the
+  game gets exactly the chosen resolution (centered); in fullscreen the screen
+  resolution applies.
+- Tests: `python3 tests/test_sim.py` (simulation, no GL).
 
-## Werkzeuge
+## Tools
 
-- `tools/glshot.py` – Offscreen-GPU-Render nach PNG (`--hud`, `--size=1920x1080`, …)
-- `tools/playtest.py` – End-to-End mit echtem `GameWidget`
-- `tools/autoplay.py` – Balancing-Bot
-- `tools/spritesheet.py` – Sprite-Übersicht
+- `tools/glshot.py` – offscreen GPU render to PNG (`--hud`, `--size=1920x1080`, `--lang=en`, …)
+- `tools/playtest.py` – end-to-end with the real `GameWidget`
+- `tools/autoplay.py` – balancing bot
+- `tools/spritesheet.py` – sprite overview
+
+## License
+
+MIT.

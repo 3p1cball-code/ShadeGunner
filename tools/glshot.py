@@ -28,6 +28,10 @@ from shadegunner.sim import World  # noqa: E402
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     flags = {a for a in sys.argv[1:] if a.startswith("--")}
+    lang = "de"
+    for fl in sys.argv[1:]:
+        if fl.startswith("--lang="):
+            lang = fl[7:]
     out = args[0] if len(args) > 0 else "shots/sg_gl.png"
     zone = int(args[1]) if len(args) > 1 else 2
     seed = int(args[2]) if len(args) > 2 else 11
@@ -38,6 +42,8 @@ def main():
             w, h = (int(v) for v in fl[7:].lower().split("x"))
 
     app = QGuiApplication(sys.argv)  # noqa: F841
+    from shadegunner import i18n
+    i18n.set_lang(lang)
     fmt = QSurfaceFormat()
     fmt.setVersion(3, 3)
     fmt.setProfile(QSurfaceFormat.OpenGLContextProfile.CompatibilityProfile)
@@ -134,10 +140,12 @@ def main():
             if fl.startswith("--ui="):
                 ui = dict(mode=fl[5:], t=i / 60.0 if fl[5:] == "intro" else 1.0, best=dict(best=4200, rank="A", runs=3),
                           options=world.run.offer(__import__("random").Random(1)) if fl[5:] == "clear" else [],
-                          sel=1, help=False, settings=dict(__import__("shadegunner.settings").settings.DEFAULTS),
+                          sel=1, help=False, settings={**__import__("shadegunner.settings").settings.DEFAULTS,
+                                                       "lang": lang},
                           settings_sel=6)
-            if fl == "--help":
-                ui["help"] = True
+        if "--help" in flags:
+            ui["help"] = True
+
         himg = hud.render(world, sc, dt, ui) if hud else None
         renderer.render(fbo.handle(), w, h, img, config.RENDER_W, config.RENDER_H,
                         gamma=0.9, dt=dt, dpr=1.0, hud=himg)

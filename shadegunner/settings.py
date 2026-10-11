@@ -7,7 +7,7 @@ from .save import _base_dir
 
 # renderer: "auto" (OpenGL, sonst Software) | "software" (immer CPU)
 DEFAULTS = dict(music=0.7, sfx=1.0, fullscreen=False, resolution=[1280, 720],
-                scanlines=True, renderer="auto", difficulty="normal")
+                scanlines=True, renderer="auto", difficulty="normal", lang="de")
 
 
 def _path():
@@ -28,6 +28,8 @@ def load():
         d["resolution"] = list(DEFAULTS["resolution"])
     if d.get("difficulty") not in ("leicht", "normal", "schwer"):
         d["difficulty"] = "normal"
+    if d.get("lang") not in ("de", "en"):
+        d["lang"] = "de"
     return d
 
 

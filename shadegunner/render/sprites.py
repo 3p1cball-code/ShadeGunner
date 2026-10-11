@@ -56,6 +56,17 @@ HEAD_NAME = dict(short="KURZE HAARE", long="LANGE HAARE", bun="DUTT", fedora="HU
                  hood="KAPUZE AUF", conical="STROHHUT", mohawk="IROKESE", bald="GLATZE",
                  beanie="MÜTZE", ponytail="PFERDESCHWANZ", visor="LEUCHTVISIER", afro="AFRO")
 
+# Englische Fassung der Kopfgeld-Beschreibung (Wort, ohne deutsche Adjektivendung)
+OUTFIT_NAME_EN = dict(trench="TRENCHCOAT", long="LONG COAT", jacket="JACKET", dress="DRESS",
+                      cloak="RAIN CAPE", robe="ROBE", hoodie="HOODIE", vest="VEST",
+                      suit="SUIT", overall="OVERALLS")
+HEAD_NAME_EN = dict(short="SHORT HAIR", long="LONG HAIR", bun="BUN", fedora="HAT", cap="CAP",
+                    hood="HOOD UP", conical="CONICAL HAT", mohawk="MOHAWK", bald="BALD",
+                    beanie="BEANIE", ponytail="PONYTAIL", visor="GLOW VISOR", afro="AFRO")
+COAT_COLOR_EN = {"dunkelblau": "dark blue", "blau": "blue", "grau": "grey", "rot": "red",
+                 "türkis": "teal", "violett": "violet", "hellblau": "light blue", "schwarz": "black",
+                 "gelb": "yellow", "weiß": "white", "pink": "pink", "orange": "orange"}
+
 
 def _mul(c, f):
     return (max(0, min(255, int(c[0] * f))), max(0, min(255, int(c[1] * f))),
@@ -68,7 +79,22 @@ def _adj(word, genus):
 
 def describe(look):
     """Zwei sagbare Merkmale (Kleidung, Kopf) für Kopfgeld-Briefings."""
+    from ..i18n import get_lang
     out = look["outfit"]
+    head_en = out == "cloak" or get_lang() == "en"
+    if get_lang() == "en":
+        cloth = OUTFIT_NAME_EN[out]
+        color = COAT_COLOR_EN.get(look["coat_name"], look["coat_name"])
+        if out == "cloak":
+            cloth = "TRANSPARENT RAIN CAPE"
+        elif out == "long":
+            cloth = color.upper() + " LONG COAT"
+        else:
+            cloth = color.upper() + " " + cloth
+        head = HEAD_NAME_EN[look["head"]]
+        if look.get("umbrella"):
+            head += ", GLOWING UMBRELLA"
+        return cloth, head
     word, g = OUTFIT_NAME[out]
     if out == "cloak":
         cloth = "TRANSPARENTES REGENCAPE"

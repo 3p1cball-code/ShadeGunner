@@ -11,8 +11,9 @@ import math
 from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtGui import QColor, QImage, QPainter, QPen
 
-from . import config, persp
+from . import config, i18n, persp
 from .detection import ORDER, TELLS
+from .i18n import tr
 from .render import pixfont
 
 S = config.HUD_SCALE
@@ -84,7 +85,7 @@ class HUD:
             p.fillRect(QRectF(x + w * k / 10, y, 2, h), QColor(6, 8, 14, 160))
 
     def _t(self, p, x, y, s, col, scale=2, align="left", opacity=1.0):
-        return pixfont.draw(p, x, y, s, col, scale, VOID, align, opacity)
+        return pixfont.draw(p, x, y, tr(s), col, scale, VOID, align, opacity)
 
     # ------------------------------------------------------------------ Haupt
     def render(self, world, scene, dt, ui=None):
@@ -274,7 +275,7 @@ class HUD:
             p.fillRect(QRectF(bx + i * segw, y2 + 10, segw - 2, 11),
                        QColor(*(RED if on else (42, 22, 28))))
         if getattr(world, "boss_speak_t", 0.0) > 0.0:
-            line = config.ROY_LINES[getattr(world, "boss_line", 0)]
+            line = tr(config.ROY_LINES[getattr(world, "boss_line", 0)])
             k = 1.0 - world.boss_speak_t / config.ROY_SPEAK_S
             n = int(len(line) * min(1.0, k * 1.35))
             self._t(p, HW // 2, HH - 172, "ROY: " + line[:n], PALE, 2, "center")
@@ -296,8 +297,8 @@ class HUD:
         # oben links
         ox, oy = 34, 24
         self._box(p, ox, oy, 410, 88)
-        self._t(p, ox + 14, oy + 12, f"SEKTOR {world.zone_index + 1}/5", ASH)
-        self._t(p, ox + 146, oy + 12, z["name"].upper(), WHITE)
+        self._t(p, ox + 14, oy + 12, tr("SEKTOR {}/5", world.zone_index + 1), ASH)
+        self._t(p, ox + 146, oy + 12, tr(z["name"]).upper(), WHITE)
         self._t(p, ox + 14, oy + 34, "AUFTRAG", ASH)
         x = ox + 116
         for i in range(max(world.quota, world.stats["reps"])):
@@ -306,17 +307,17 @@ class HUD:
             pixfont.draw(p, x, oy + 34, "▮" if done else "▯", col, 2, VOID)
             x += 16
         self._t(p, x + 8, oy + 34, f"{world.stats['reps']}/{world.quota}", PALE)
-        self._t(p, ox + 300, oy + 34, f"REST {world.reps_remaining()}", SLATE)
+        self._t(p, ox + 300, oy + 34, tr("REST {}", world.reps_remaining()), SLATE)
         self._t(p, ox + 14, oy + 58, "PUNKTE", ASH)
         self._t(p, ox + 116, oy + 58, f"{max(0, run.score):06d}", WHITE)
         if world.combo > 1:
-            self._t(p, ox + 236, oy + 58, f"KETTE X{world.combo}", AMBER if int(t * 4) % 2 else WHITE, 2)
+            self._t(p, ox + 236, oy + 58, tr("KETTE X{}", world.combo), AMBER if int(t * 4) % 2 else WHITE, 2)
         # Kopfgeld-Akte
         b = getattr(world, "bounty", None)
         if b is not None and world.bounty_desc:
             done = world.stats.get("bounty")
             gone = not done and (not b.alive or b.escaped)
-            line1 = f"KOPFGELD  {b.name}"
+            line1 = tr("KOPFGELD  {}", b.name)
             line2 = ", ".join(world.bounty_desc)
             status = "KASSIERT ✓" if done else ("ENTKOMMEN ✗" if b.escaped else ("" if not gone else "✗"))
             bw = max(pixfont.text_width(line2, 2), pixfont.text_width(line1 + "  " + status, 2)) + 28
@@ -390,7 +391,7 @@ class HUD:
                 self._t(p, HW // 2, HH - 92, "RUF LÄDT NOCH - LOSLASSEN BRICHT AB", SLATE, 2, "center")
             else:
                 k = min(1.0, (hold - config.SHOUT_TAP) / config.SHOUT_CHARGE)
-                self._t(p, HW // 2, HH - 92, f"LOSLASSEN: ALLE RUNTER!   RADIUS {int(k * 100):3d}%", AMBER, 2, "center")
+                self._t(p, HW // 2, HH - 92, tr("LOSLASSEN: ALLE RUNTER!   RADIUS {:3d}%", int(k * 100)), AMBER, 2, "center")
         elif hold >= 0.0:
             self._t(p, HW // 2, HH - 92, "TIPPEN = ZIEL ANSPRECHEN   HALTEN = MENGE", SLATE, 2, "center")
         if world.aiming:
@@ -415,17 +416,19 @@ class HUD:
             return
         c = world.confidence_of(tg)
         self._box(p, x, y, w, h, border=conf_color(c) if tg.revealed else STEEL)
-        self._t(p, x + 12, y + 10, f"SUBJEKT #{tg.uid:04d}", WHITE)
+        subj = tr("SUBJEKT #{:04d}", tg.uid)
+        self._t(p, x + 12, y + 10, subj, WHITE)
+        sx = x + 12 + pixfont.text_width(subj, 2) + 16
         if world.scan_t >= 0 and world.scan_target is tg:
             k = world.scan_t / max(0.01, config.SCAN_TIME * world.run.mods["scan_time"])
-            self._t(p, x + 178, y + 10, f"SCAN {int(k * 100):3d}%", CYAN)
+            self._t(p, sx, y + 10, tr("SCAN {:3d}%", int(k * 100)), CYAN)
         elif tg.scanned:
-            self._t(p, x + 196, y + 10, "GESCANNT", TEAL)
+            self._t(p, sx, y + 10, "GESCANNT", TEAL)
         else:
-            self._t(p, x + 168, y + 10, "BEOBACHTE", SLATE if int(self.t * 2) % 2 else ASH)
+            self._t(p, sx, y + 10, "BEOBACHTE", SLATE if int(self.t * 2) % 2 else ASH)
         yy = y + 30
         for name in ORDER:
-            lbl = TELLS[name][3]
+            lbl = tr(TELLS[name][3])
             strong = TELLS[name][2]
             self._t(p, x + 12, yy, lbl, ASH)
             if name in tg.revealed:
@@ -509,8 +512,9 @@ class HUD:
         self._t(p, HW // 2, 514, "H  STEUERUNG      S  EINSTELLUNGEN      ESC  ENDE", ASH, 2, "center")
         best = ui.get("best")
         if best:
-            self._t(p, HW // 2, 554, f"BESTWERT {best.get('best', 0):06d}  RANG {best.get('rank', '-')}  "
-                                     f"EINSÄTZE {best.get('runs', 0)}", TEAL, 2, "center")
+            self._t(p, HW // 2, 554, tr("BESTWERT {:06d}  RANG {}  EINSÄTZE {}",
+                                        best.get("best", 0), best.get("rank", "-"), best.get("runs", 0)),
+                    TEAL, 2, "center")
         self._t(p, HW // 2, HH - 54, "REPLIKANTEN SIND WIE JEDE ANDERE MASCHINE.", SLATE, 2, "center")
 
     def _intro(self, p, world, ui):
@@ -519,11 +523,11 @@ class HUD:
         w, h = 820, 280
         x, y = (HW - w) // 2, 190
         self._box(p, x, y, w, h, border=CYAN, alpha=225)
-        self._t(p, HW // 2, y + 20, f"SEKTOR {world.zone_index + 1} / 5", ASH, 2, "center")
-        name = z["name"].upper()
+        self._t(p, HW // 2, y + 20, tr("SEKTOR {} / 5", world.zone_index + 1), ASH, 2, "center")
+        name = tr(z["name"]).upper()
         n = int(len(name) * min(1.0, k * 2.5))
         self._t(p, HW // 2, y + 46, name[:n], WHITE, 6, "center")
-        line = f"AUFTRAG: {world.quota} VON {world.replicants_total} REPLIKANTEN DEAKTIVIEREN"
+        line = tr("AUFTRAG: {} VON {} REPLIKANTEN DEAKTIVIEREN", world.quota, world.replicants_total)
         n2 = int(len(line) * min(1.0, max(0.0, k - 0.3) * 1.6))
         self._t(p, HW // 2, y + 112, line[:n2], CYAN, 2, "center")
         if k > 0.9:
@@ -533,26 +537,29 @@ class HUD:
             self._t(p, x + 240, y + 146, "▮" * tarn + "▯" * (4 - tarn), AMBER)
             self._t(p, x + 420, y + 146, "AGGRESSION", ASH)
             self._t(p, x + 580, y + 146, "▮" * agg + "▯" * (4 - agg), RED)
-            self._t(p, x + 120, y + 170, f"PASSANTEN CA. {len(world.actors) - 1}", ASH)
-            self._t(p, x + 420, y + 170, f"QUOTE {int(world.prior * 100)}%", ASH)
+            self._t(p, x + 120, y + 170, tr("PASSANTEN CA. {}", len(world.actors) - 1), ASH)
+            self._t(p, x + 420, y + 170, tr("QUOTE {}%", int(world.prior * 100)), ASH)
             if getattr(world, "bounty", None) is not None and world.bounty_desc:
                 b = world.bounty
-                self._t(p, HW // 2, y + 200, f"KOPFGELD +{config.POINTS_BOUNTY}: {b.name}"
-                        + ("  (ZÄH: 2 TREFFER)" if b.hp > 1 else ""), AMBER, 2, "center")
+                btxt = tr("KOPFGELD +{}: {}", config.POINTS_BOUNTY, b.name)
+                if b.hp > 1:
+                    btxt += tr("  (ZÄH: 2 TREFFER)")
+                self._t(p, HW // 2, y + 200, btxt, AMBER, 2, "center")
                 self._t(p, HW // 2, y + 222, ", ".join(world.bounty_desc), PALE, 2, "center")
         if k > 1.3 and int(self.t * 2) % 2 == 0:
             self._t(p, HW // 2, y + h - 26, "BELIEBIGE TASTE", SLATE, 2, "center")
 
     # Zeilen des Einstellungsmenüs: (Label, Wert-Funktion, Art)
     SETTING_ROWS = [
-        ("MUSIK", lambda s: f"{int(round(s['music'] * 100)):3d}%", "range"),
-        ("EFFEKTE", lambda s: f"{int(round(s['sfx'] * 100)):3d}%", "range"),
-        ("VOLLBILD", lambda s: "AN" if s["fullscreen"] else "AUS", "toggle"),
-        ("AUFLÖSUNG", lambda s: f"{s['resolution'][0]} x {s['resolution'][1]}", "cycle"),
-        ("SCANLINES", lambda s: "AN" if s["scanlines"] else "AUS", "toggle"),
-        ("RENDERER", lambda s: "GPU" if s.get("renderer") != "software" else "SOFTWARE", "toggle"),
-        ("SCHWIERIGKEIT", lambda s: config.DIFFICULTY.get(s.get("difficulty", "normal"),
-                                                          config.DIFFICULTY["normal"])["label"], "cycle"),
+        ("music", "MUSIK", lambda s: f"{int(round(s['music'] * 100)):3d}%", "range"),
+        ("sfx", "EFFEKTE", lambda s: f"{int(round(s['sfx'] * 100)):3d}%", "range"),
+        ("fullscreen", "VOLLBILD", lambda s: "AN" if s["fullscreen"] else "AUS", "toggle"),
+        ("resolution", "AUFLÖSUNG", lambda s: f"{s['resolution'][0]} x {s['resolution'][1]}", "cycle"),
+        ("scanlines", "SCANLINES", lambda s: "AN" if s["scanlines"] else "AUS", "toggle"),
+        ("lang", "SPRACHE", lambda s: i18n.lang_name(s.get("lang", "de")), "cycle"),
+        ("difficulty", "SCHWIERIGKEIT", lambda s: config.DIFFICULTY.get(s.get("difficulty", "normal"),
+                                                                        config.DIFFICULTY["normal"])["label"], "cycle"),
+        ("renderer", "RENDERER", lambda s: "GPU" if s.get("renderer") != "software" else "SOFTWARE", "toggle"),
     ]
 
     def _settings(self, p, ui):
@@ -560,23 +567,22 @@ class HUD:
         s = ui.get("settings", {})
         sel = ui.get("settings_sel", 0)
         self._t(p, HW // 2, 120, "EINSTELLUNGEN", WHITE, 5, "center")
-        w, rowh, gap = 720, 46, 12
+        w, rowh, gap = 720, 42, 10
         x = (HW - w) // 2
-        y = 210
-        for i, (label, val, kind) in enumerate(self.SETTING_ROWS):
+        y = 196
+        for i, (key, label, val, kind) in enumerate(self.SETTING_ROWS):
             on = i == sel
             y0 = y + i * (rowh + gap)
             self._box(p, x, y0, w, rowh, border=CYAN if on else INDIGO, alpha=225)
-            self._t(p, x + 24, y0 + 15, label, WHITE if on else ASH, 3)
-            vtxt = val(s)
-            self._t(p, x + w - 24, y0 + 15, vtxt, CYAN if on else PALE, 3, "right")
+            self._t(p, x + 24, y0 + 13, label, WHITE if on else ASH, 3)
+            self._t(p, x + w - 24, y0 + 13, val(s), CYAN if on else PALE, 3, "right")
             if kind == "range" and on:
-                self._t(p, x + w // 2 + 60, y0 + 17, "←  →", AMBER, 2, "center")
+                self._t(p, x + w // 2 + 60, y0 + 15, "←  →", AMBER, 2, "center")
         note = y + len(self.SETTING_ROWS) * (rowh + gap) + 8
         if s.get("renderer") == "software":
             self._t(p, HW // 2, note, "RENDERER WECHSELT MIT DEM NÄCHSTEN START", SLATE, 2, "center")
-            note += 24
-        if self.SETTING_ROWS[sel][0] == "SCHWIERIGKEIT":
+            note += 22
+        if self.SETTING_ROWS[sel][0] == "difficulty":
             self._t(p, HW // 2, note, "MEHR MENSCHEN JE VIERTEL - GILT AB DEM NÄCHSTEN EINSATZ", SLATE, 2, "center")
         self._t(p, HW // 2, HH - 70, "▲▼  WÄHLEN      ← →  ÄNDERN      ESC / S  ZURÜCK", ASH, 2, "center")
 
@@ -596,7 +602,7 @@ class HUD:
                 ("ENTKOMMEN", str(st["escaped"]), AMBER if st["escaped"] else ASH),
                 ("SCANS / SCHÜSSE", f"{st['scans']} / {st['shots']}", ASH),
                 ("ZEIT", f"{int(st['time']) // 60}:{int(st['time']) % 60:02d}", ASH),
-                ("ORIGAMI", (world.origami[0]["name"] if world.origami else "-") if st.get("origami")
+                ("ORIGAMI", tr(world.origami[0]["name"]) if (world.origami and st.get("origami"))
                  else "NICHT GEFUNDEN", PALE if st.get("origami") else SLATE),
                 ("PUNKTE (SEKTOR)", f"{st['score']:+d}", WHITE)]
         y = 150
@@ -621,9 +627,9 @@ class HUD:
             lift = -8 if on else 0
             self._box(p, x, y + lift, cw, ch, border=CYAN if on else INDIGO, alpha=235)
             self._t(p, x + 16, y + lift + 16, str(i + 1), AMBER if on else SLATE, 3)
-            self._t(p, x + 52, y + lift + 22, title, WHITE if on else ASH, 2)
+            self._t(p, x + 52, y + lift + 22, tr(title), WHITE if on else ASH, 2)
             yy = y + lift + 70
-            for line in wrap(desc, 26):
+            for line in wrap(tr(desc), 26):
                 self._t(p, x + 16, yy, line, PALE if on else SLATE, 2)
                 yy += 22
         self._t(p, HW // 2, HH - 50, "1-3 / PFEILE + ENTER", SLATE, 2, "center")
@@ -652,7 +658,7 @@ class HUD:
             self._t(p, HW // 2 - 260, y, lbl, ASH)
             self._t(p, HW // 2 + 260, y, val, WHITE, 2, "right")
             y += 28
-        self._t(p, HW // 2, y + 20, f"RANG {rank}", CYAN if rank in "SA" else AMBER, 6, "center")
+        self._t(p, HW // 2, y + 20, tr("RANG {}", rank), CYAN if rank in "SA" else AMBER, 6, "center")
         if ui.get("new_best"):
             self._t(p, HW // 2, y + 90, "NEUER BESTWERT!", AMBER if int(self.t * 3) % 2 else WHITE, 3, "center")
         if int(self.t * 1.6) % 2 == 0:
