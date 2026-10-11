@@ -717,6 +717,14 @@ def test_settings_language_validates():
     assert settings.DEFAULTS["lang"] in ("de", "en")
 
 
+def test_settings_rows_match_keys():
+    """Auswahlzeile im Einstellungsmenue muss genau die Option verstellen, die dort steht."""
+    from shadegunner.game import _GameMixin
+    from shadegunner.hud import HUD
+    assert _GameMixin._SETTING_KEYS == [r[0] for r in HUD.SETTING_ROWS]
+    assert "lang" in _GameMixin._SETTING_KEYS
+
+
 def main():
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     fails = 0

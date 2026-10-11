@@ -42,8 +42,8 @@ class _GameMixin:
     SoftwareGameWidget (QWidget + CPU-Dither). Nur die Darstellung unterscheidet sich.
     """
 
-    _SETTING_KEYS = ["music", "sfx", "fullscreen", "resolution", "scanlines", "renderer",
-                     "difficulty", "lang"]
+    # aus der Anzeige abgeleitet, damit Auswahlzeile und verstellte Option nie auseinanderlaufen
+    _SETTING_KEYS = [row[0] for row in HUD.SETTING_ROWS]
 
     def __init__(self, parent=None):
         super().__init__(parent)
