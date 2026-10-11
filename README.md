@@ -46,6 +46,11 @@ ist der Einsatz verloren).
   Schrecksekunde. Wer den REIZ-Tell hat, bleibt **reglos stehen**, die anderen gehen **in
   Deckung** (die Kugel geht über Geduckte hinweg) oder rennen. Jeder Ruf erhöht die
   **Unruhe** der Straße: mehr Leute rennen, Replikanten werden nervös und hauen ab.
+- **Kein Fahrzeug gleicht dem anderen:** Korosseriefarben, Akzentfarben (Zierlinien,
+  Zweifarbdach, Schweller, Rallyestreifen), Unterboden-Neon, Helligkeit und Schriftzüge
+  (Tyrell, Shimata, Pan Am, Off-World, Nexus 6, Eye Works …) werden je Fahrzeug
+  kombiniert – auch Taxi-Dachschilder, Bus-Werbeband, Buslinie (z. B. „12 HADES“) und
+  Laster-Aufschrift sind zufällig. 16 Varianten je Art.
 - **Verkehr wird zur Kolonne:** Mit jedem Viertel fahren mehr Fahrzeuge – und je dichter
   der Verkehr, desto langsamer fließt er: Stop-and-go, haltende Taxis, Stau-Hupen, in der
   Innenstadt meist 5–7 Fahrzeuge im Bild. Und je langsamer und voller, desto **leiser**

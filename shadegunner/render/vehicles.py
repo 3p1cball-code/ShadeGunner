@@ -24,15 +24,25 @@ VEH_SCALE = 1.5    # Zeichnung in 2/3-Einheiten, Welt-Maße in sim.VEHICLES
 # Farbwelt im Stil von Syd Meads Blade-Runner-Fahrzeugen: gedeckte Metallics,
 # überbaute Lichtleisten, verkleidete Räder, nachgerüstete Rohre und Lüftungen.
 BODY = {
-    "car": [(40, 46, 64), (64, 36, 46), (36, 58, 64), (78, 80, 92), (58, 50, 40)],
-    "taxi": [(196, 150, 52), (186, 120, 40)],
+    "car": [(40, 46, 64), (64, 36, 46), (36, 58, 64), (78, 80, 92), (58, 50, 40),
+            (52, 60, 96), (46, 66, 58), (70, 52, 74), (30, 36, 52), (86, 60, 52)],
+    "taxi": [(196, 150, 52), (186, 120, 40), (206, 168, 74), (168, 132, 50), (120, 140, 150), (150, 158, 90)],
     "police": [(70, 82, 104)],
-    "truck": [(70, 66, 62), (78, 52, 40), (52, 64, 76)],
-    "bike": [(30, 30, 40), (90, 20, 50), (24, 50, 60)],
+    "truck": [(70, 66, 62), (78, 52, 40), (52, 64, 76), (64, 72, 54), (84, 74, 58), (56, 58, 70)],
+    "bike": [(30, 30, 40), (90, 20, 50), (24, 50, 60), (70, 58, 30), (40, 44, 66), (88, 44, 36)],
     "limo": [(14, 14, 20), (30, 16, 26)],
-    "bus": [(54, 60, 78), (70, 52, 60), (40, 66, 70)],
+    "bus": [(54, 60, 78), (70, 52, 60), (40, 66, 70), (72, 66, 44), (58, 44, 64), (46, 54, 54), (84, 72, 52)],
 }
 UNDERGLOW = [CYAN, MAGENTA, VIOLET, TEAL, AMBER]
+# Akzentfarbe für Zierlinien, Dächer, Schweller und Werbebanner
+ACCENT = [(196, 150, 52), (224, 72, 150), (64, 210, 220), (255, 138, 44),
+          (122, 74, 168), (34, 96, 104), (138, 32, 56), (162, 168, 180)]
+LIVERY = ["TYRELL", "SHIMATA", "PAN AM", "OFF-WORLD", "NEXUS 6", "EYE WORKS",
+          "DNA ROW", "KOBAYASHI", "WALLACE", "SECTOR 4", "HADES", "VOIGHT-KAMPFF"]
+BUS_OP = ["OFF-WORLD", "SHIMATA", "TYRELL", "PAN AM", "KOBAYASHI"]
+BUS_ROUTE = ["4 CHINATOWN", "12 HADES", "9 SECTOR 4", "7 DNA ROW", "2 OFF-WORLD", "11 TYRELL", "6 EYE WORKS"]
+TAXI_SIGN = ["TAXI", "CAB", "TAXI", "METRO", "TAXI"]
+VARIANTS = 16      # unterscheidbare Varianten je Fahrzeugart (Cache-Schlüssel)
 HEAD = (255, 250, 230)
 TAIL = (240, 40, 70)
 WIN = (24, 34, 58)
@@ -41,6 +51,11 @@ CHROME = (128, 134, 148)
 
 def _q(c, a=255):
     return QColor(int(c[0]), int(c[1]), int(c[2]), a)
+
+
+def _tint(c, k):
+    """Helligkeit leicht streuen (k = -3..3), damit gleiche Palettenfarben nicht gleich wirken."""
+    return _mul(c, 1.0 + 0.10 * k)
 
 
 def _mul(c, f):
@@ -222,7 +237,7 @@ def spinner_image(ppx, police, d=1, far=False):
 
 
 # ---------------------------------------------------------------------------- Bodenverkehr
-def _sedan(p, e, body, glow, rim):
+def _sedan(p, e, body, glow, rim, accent, style, livery, d):
     """Deckard-Sedan: ausgemusterter Flug-Sedan, Klappen entfernt, Lichtmuster behalten."""
     for q in (p, e):
         _rect(q, -23, -2.6, 46, 1.0, glow)
@@ -243,6 +258,19 @@ def _sedan(p, e, body, glow, rim):
         _rect(p, x0, -10.4, 8.5, 0.5, _mul(rim, 0.5))
     _rect(p, -29.4, -6.6, 59, 1.5, CHROME)                              # Stoßleiste
     _rect(p, -29.4, -6.6, 59, 0.5, _mul(rim, 1.0))
+    # Variante: Zierlinie / Zweifarbdach / Schweller / Türdecal / Doppelstreifen
+    if style == 0:
+        _rect(p, -27, -8.8, 53.5, 1.1, accent)
+    elif style == 1:
+        _rect(p, -12.8, -18.9, 21.8, 1.0, accent)
+        _rect(p, -27, -8.8, 53.5, 0.5, _mul(accent, 0.75))
+    elif style == 2:
+        _rect(p, -27.5, -5.3, 52.5, 1.5, accent)
+    elif style == 3:
+        _stencil(p, livery, -25.0, -11.2, 15.0, accent, d, 0.5)
+    else:
+        _rect(p, -27, -9.7, 53.5, 0.6, accent)
+        _rect(p, -27, -7.9, 53.5, 0.6, accent)
     _wheel(p, -18, 3.6, skirt=body)
     _wheel(p, 18, 3.6, skirt=body)
     _lamps(p, e, (27.6, 28.4), -10.6, 0.7, 1.0, HEAD)                   # Lichtmuster vorn
@@ -253,7 +281,7 @@ def _sedan(p, e, body, glow, rim):
         _rect(q, 24, -11.4, 1.4, 0.6, AMBER)
 
 
-def _metrokab(p, e, body, glow, rim, d):
+def _metrokab(p, e, body, glow, rim, d, accent, style):
     """Metrokab: hoher Glas-Dom über kastigem Unterbau, Schachbrettband, Dachlampe."""
     for q in (p, e):
         _rect(q, -22, -2.6, 44, 1.0, glow)
@@ -268,23 +296,27 @@ def _metrokab(p, e, body, glow, rim, d):
     _ell(p, 7.0, -19.4, 3.4, 3.6, (14, 14, 20))                        # Fahrer
     for q in (p, e):
         _rect(q, 10.5, -15.8, 3.0, 0.8, _mul(AMBER, 0.6))             # Taxameter-Schimmer
-    for i in range(20):                                                 # Schachbrettband
-        x = -27 + i * 2.7
-        _rect(p, x, -9.2 + (0 if i % 2 else 1.1), 1.35, 1.1, (14, 14, 18))
-        _rect(p, x + 1.35, -9.2 + (1.1 if i % 2 else 0), 1.35, 1.1, (14, 14, 18))
+    if style != 3:                                                      # Schachbrettband (nicht immer)
+        for i in range(20):
+            x = -27 + i * 2.7
+            _rect(p, x, -9.2 + (0 if i % 2 else 1.1), 1.35, 1.1, (14, 14, 18))
+            _rect(p, x + 1.35, -9.2 + (1.1 if i % 2 else 0), 1.35, 1.1, (14, 14, 18))
+    if style in (0, 2, 4):                                              # Zierlinie
+        _rect(p, -28, -8.7, 53, 0.9, accent)
     _rect(p, -28, -12.6, 50, 0.6, _mul(rim, 0.8))
     _rect(p, -28.4, -6.0, 56.6, 1.2, (24, 24, 30))
-    _rect(p, -7, -27.0, 11, 3.0, (16, 16, 22))                          # Dachschild
+    sign_col = accent if style in (1, 4) else AMBER                   # Dachschild
+    _rect(p, -7, -27.0, 11, 3.0, (16, 16, 22))
     for q in (p, e):
-        _rect(q, -6.2, -26.4, 9.4, 1.8, AMBER)
-    _stencil(p, "TAXI", -5.8, -26.5, 7.0, (30, 20, 10), d, 0.4)
+        _rect(q, -6.2, -26.4, 9.4, 1.8, sign_col)
+    _stencil(p, TAXI_SIGN[style % len(TAXI_SIGN)], -5.8, -26.5, 7.0, (30, 20, 10), d, 0.4)
     _wheel(p, -17, 3.4, skirt=body)
     _wheel(p, 17, 3.4, cover=_mul(body, 0.7))
     _lamps(p, e, (26.6, 27.4), -10.0, 0.8, 1.4, HEAD)
     _lamps(p, e, (-28.6,), -10.6, 1.0, 2.6, TAIL)
 
 
-def _armadillo(p, e, body, rim, rnd):
+def _armadillo(p, e, body, rim, rnd, accent, livery, d):
     """Sebastians Laster: Panzer aus überlappenden, ausgemusterten Deflektorplatten."""
     hl = 46.0
     for q in (p, e):
@@ -292,7 +324,8 @@ def _armadillo(p, e, body, rim, rnd):
     _rect(p, -hl, -8.0, 2 * hl, 3.6, (20, 20, 24))                     # Fahrgestell
     x0, x1, n = -hl, 21.0, 7
     pw = (x1 - x0) / n
-    tints = [body, _mul(body, 0.85), (70, 54, 44), _mul(body, 1.12), (58, 62, 70)]
+    tints = [body, _mul(body, 0.85), (70, 54, 44), _mul(body, 1.12), (58, 62, 70), _mul(accent, 0.72),
+             _mul(body, 1.25)]
 
     def top(x):
         u = (x - x0) / (x1 - x0)
@@ -307,6 +340,8 @@ def _armadillo(p, e, body, rim, rnd):
         _line(p, b - 0.6, top(b - 0.6) + 0.4, b - 0.6, -8.0, _mul(rim, 0.75), 0.6)   # Kantenlicht
         for yy in (-10.0, top((a + b) / 2) + 3.0):
             _rect(p, (a + b) / 2, yy, 0.6, 0.6, _mul(c, 1.6))                   # Nieten
+    _stencil(p, livery, -hl + 8.0, -22.0, 34.0, _mul(PALE, 0.7), d, 0.9)   # Firmenaufschrift
+    _rect(p, -42, -10.2, 20, 1.4, _mul(accent, 0.8))                  # Spanngurt
     _rect(p, -hl + 2, -9.0, 62, 0.8, (96, 96, 108))                    # nachgerüstetes Rohr
     for x in range(int(-hl) + 6, 18, 9):
         _rect(p, x, -9.4, 1.2, 1.6, (120, 120, 130))
@@ -331,7 +366,7 @@ def _armadillo(p, e, body, rim, rnd):
     _lamps(p, e, (22.0, 26.0), -26.2, 2.0, 0.8, AMBER)
 
 
-def _limo(p, e, body, rim, d):
+def _limo(p, e, body, rim, d, accent):
     """Aerial-Limousine: lang, lackschwarz, Schlitzfenster, Radgondeln vorn, Goldlinie."""
     for q in (p, e):
         _rect(q, -36, -2.4, 64, 0.9, VIOLET)
@@ -342,10 +377,10 @@ def _limo(p, e, body, rim, d):
     _rect(p, -38, -13.0, 76, 0.6, _mul(rim, 0.9))
     _rect(p, -4, -16.8, 22, 0.6, _mul(rim, 1.0))
     _poly(p, [(-42, -10.4), (-41, -17.5), (-38.6, -17.5), (-37, -12.6)], _mul(body, 1.3))   # Heckflosse
-    _rect(p, -42, -8.8, 80, 0.7, (150, 110, 50))                        # Goldlinie
+    _rect(p, -42, -8.8, 80, 0.7, accent)                                # Zierlinie
     for q in (p, e):
-        _rect(q, 2.0, -8.9, 18, 0.5, _mul(AMBER, 0.7))
-    _poly(p, [(-27, -9.6), (-25.2, -12.0), (-23.4, -9.6)], (170, 126, 56))   # Tyrell-Pyramide
+        _rect(q, 2.0, -8.9, 18, 0.5, _mul(accent, 0.8))
+    _poly(p, [(-27, -9.6), (-25.2, -12.0), (-23.4, -9.6)], _mul(accent, 1.05))   # Tyrell-Pyramide
     # Radgondel vorn, Hinterrad verkleidet
     _ell(p, 29.0, -9.0, 9.0, 8.6, _mul(body, 1.6))
     _ell(p, 29.8, -5.2, 7.4, 5.2, (8, 8, 12))
@@ -357,7 +392,7 @@ def _limo(p, e, body, rim, d):
         _rect(q, -40, -5.0, 14, 0.6, TAIL)
 
 
-def _bike(p, e, body, glow, rim):
+def _bike(p, e, body, glow, rim, accent):
     for q in (p, e):
         _rect(q, -11, -1.6, 22, 0.9, glow)
     _wheel(p, -10, 4.0, cover=_mul(body, 1.3))
@@ -371,6 +406,7 @@ def _bike(p, e, body, glow, rim):
             q.drawEllipse(QRectF(x - 2.6, -6.6, 5.2, 5.2))
         q.setPen(Qt.PenStyle.NoPen)
     _poly(p, [(-15, -6), (-6, -11.4), (7, -12.6), (15.4, -8.4), (13, -5), (-12, -4.5)], body)
+    _poly(p, [(-13, -6.0), (-5.5, -10.4), (6, -11.4), (12, -8.4), (10.5, -6.6), (-11, -5.6)], _mul(accent, 0.85))
     _rect(p, -6, -11.6, 13, 0.8, _mul(rim, 0.9))
     _poly(p, [(6, -12.4), (11, -15.4), (13.6, -11.2)], (40, 50, 80))     # Windschild
     # Fahrer, nach vorn gebeugt
@@ -382,7 +418,7 @@ def _bike(p, e, body, glow, rim):
         _rect(q, -14.6, -7, 1.2, 1.4, TAIL)
 
 
-def _bus(p, e, body, rim, rnd, d):
+def _bus(p, e, body, rim, rnd, d, accent, livery):
     """Stadtbus (aus Meads Formensprache extrapoliert): Fensterband voller Fahrgäste."""
     hl = 60.0
     for q in (p, e):
@@ -408,14 +444,15 @@ def _bus(p, e, body, rim, rnd, d):
     _rect(p, 34, -19.4, 8, 15.0, (34, 40, 56))                         # Tür
     for q in (p, e):
         _rect(q, 34.6, -18.8, 6.8, 0.8, _mul(PALE, 0.7))
-    ad = ((224, 72, 150), (64, 210, 220), (255, 138, 44))[rnd % 3]
-    _rect(p, -52, -18.6, 70, 7.0, _mul(ad, 0.45))
+    _rect(p, -52, -18.6, 70, 7.0, _mul(accent, 0.45))                  # Werbeband
     for q in (p, e):
-        _rect(q, -52, -18.6, 70, 0.8, _mul(ad, 0.9))
-    _stencil(p, ("OFF-WORLD", "SHIMATA", "TYRELL")[rnd % 3], -48, -17.4, 40.0, _mul(PALE, 0.85), d, 0.9)
+        _rect(q, -52, -18.6, 70, 0.8, _mul(accent, 1.0))
+    _rect(p, -52, -12.0, 70, 0.7, _mul(accent, 0.8))
+    _stencil(p, livery, -48, -17.4, 40.0, _mul(PALE, 0.85), d, 0.9)
     _rect(p, 30, -35.4, 18, 3.4, (12, 12, 16))                          # Linienanzeige
-    _stencil(p, ("4 CHINATOWN", "12 HADES", "9 SECTOR 4")[rnd % 3], 31, -34.8, 16.0, AMBER, d, 0.45)
-    _stencil(e, ("4 CHINATOWN", "12 HADES", "9 SECTOR 4")[rnd % 3], 31, -34.8, 16.0, AMBER, d, 0.45)
+    route = BUS_ROUTE[(rnd >> 5) % len(BUS_ROUTE)]
+    _stencil(p, route, 31, -34.8, 16.0, AMBER, d, 0.45)
+    _stencil(e, route, 31, -34.8, 16.0, AMBER, d, 0.45)
     _rect(p, -60, -8.0, 120, 1.2, (24, 24, 30))
     _wheel(p, -44, 4.6, skirt=body)
     _wheel(p, 40, 4.6, skirt=body)
@@ -426,8 +463,12 @@ def _bus(p, e, body, rim, rnd, d):
 
 def _draw_vehicle(p, e, kind, seed, rim, d=1):
     rnd = (seed * 2654435761) & 0xFFFFFFFF
-    body = BODY[kind][rnd % len(BODY[kind])]
+    pal = BODY[kind]
+    body = _tint(pal[rnd % len(pal)], ((rnd >> 4) % 7) - 3)
     glow = UNDERGLOW[(rnd >> 8) % len(UNDERGLOW)]
+    accent = ACCENT[(rnd >> 13) % len(ACCENT)]
+    style = (rnd >> 17) % 5
+    livery = LIVERY[(rnd >> 3) % len(LIVERY)]
     if kind == "police":
         p.save()
         e.save()
@@ -437,23 +478,23 @@ def _draw_vehicle(p, e, kind, seed, rim, d=1):
         p.restore()
         e.restore()
     elif kind == "car":
-        _sedan(p, e, body, glow, rim)
+        _sedan(p, e, body, glow, rim, accent, style, livery, d)
     elif kind == "taxi":
-        _metrokab(p, e, body, glow, rim, d)
+        _metrokab(p, e, body, glow, rim, d, accent, style)
     elif kind == "truck":
-        _armadillo(p, e, body, rim, rnd)
+        _armadillo(p, e, body, rim, rnd, accent, livery, d)
     elif kind == "limo":
-        _limo(p, e, body, rim, d)
+        _limo(p, e, body, rim, d, accent)
     elif kind == "bike":
-        _bike(p, e, body, glow, rim)
+        _bike(p, e, body, glow, rim, accent)
     elif kind == "bus":
-        _bus(p, e, body, rim, rnd, d)
+        _bus(p, e, body, rim, rnd, d, accent, livery)
 
 
 def vehicle_image(kind, seed, ppu, rim, d=1):
     """(img, emit, ax, ay, length_px): Anker = Boden-Mitte des Fahrzeugs (Fahrtrichtung d)."""
     kpx = round(ppu * 8) / 8
-    key = ("v", kind, seed % 6, kpx, rim, d)
+    key = ("v", kind, seed % VARIANTS, kpx, rim, d)
     hit = _CACHE.get(key)
     if hit is not None:
         return hit
@@ -470,7 +511,7 @@ def vehicle_image(kind, seed, ppu, rim, d=1):
     for q in (p, e):
         q.translate(ax, ay)
         q.scale(kpx * VEH_SCALE, kpx * VEH_SCALE)
-    _draw_vehicle(p, e, kind, seed % 6, rim, d)
+    _draw_vehicle(p, e, kind, seed % VARIANTS, rim, d)
     p.end()
     e.end()
     img = _outline(img)
@@ -479,7 +520,7 @@ def vehicle_image(kind, seed, ppu, rim, d=1):
         em = em.mirrored(True, False)
         ax = w - 1 - ax
     res = (img, em, ax, ay, L * kpx)
-    if len(_CACHE) > 600:
+    if len(_CACHE) > 1000:
         _CACHE.clear()
     _CACHE[key] = res
     return res

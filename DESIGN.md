@@ -392,3 +392,16 @@ Innenstadt vor allem ein Sicht- und Übersichtsproblem.
 Verkehr (Außenbezirk ≈ 0,96, Innenstadt ≈ 0,19). Höchstens 4 Vorbeifahrten gleichzeitig.
 Hupe lauter (`VOLUME["honk"] = 0,55`), neuer Rempler-Sound `bump`.
 
+### Fahrzeug-Varianten (render/vehicles.py)
+
+Fahrzeuge sind nicht mehr nur sechs Einheitsbilder. `_draw_vehicle` zieht aus dem Seed
+eine Kombination aus: **Korpusfarbe** (je Art 6–10 Palettenwerte, zusätzlich per
+`_tint` ±30 % Helligkeit gestreut), **Akzentfarbe** (`ACCENT`) und **Akzent-Stil**
+(Zierlinie, Zweifarbdach, Schweller, Türdecal, Doppelstreifen), **Unterboden-Neon**
+(`UNDERGLOW`) und **Schriftzug** (`LIVERY`: Tyrell, Shimata, Pan Am, Off-World, Nexus 6,
+Eye Works, DNA Row, Kobayashi, Wallace …). Dazu Taxi-Dachschild (`TAXI/CAB/METRO`,
+Farbe = Akzent), Bus-Werbeband in Akzentfarbe, Buslinie (`BUS_ROUTE`, z. B. „12 HADES“)
+und Laster-Firmenaufschrift. Der Cache-Schlüssel nutzt `seed % VARIANTS` (16), der
+Sprite-Cache leert bei > 1000 Einträgen. Mehr Draw-Aufwand nur beim Erzeugen (gecacht),
+Szene-Zeit unverändert.
+
