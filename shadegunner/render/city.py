@@ -317,6 +317,62 @@ def _make_sign(rng, color, kind, word=None):
     return build("on"), build("off"), build("emit")
 
 
+def _dragon_sign(rng):
+    """Neon-Drache (hellblau) wie über dem White Dragon. Rückgabe (on, off, emit,
+    Zungen-Anker): die rote Zunge flackert live (render/scene.py)."""
+    w, h = 66, 24
+    col = (150, 220, 236)
+    pts = set()
+    # Körper: S-Kurve, nach hinten schmaler werdend, endet in einer Schwanzlocke
+    prev = None
+    for i in range(0, 220):
+        u = i / 219
+        x = 15 + u * 44
+        y = 12 + 6.5 * math.sin(u * math.pi * 2.0) * (1.0 - 0.35 * u)
+        cur = (int(round(x)), int(round(y)))
+        pts.add(cur)
+        if u < 0.55:
+            pts.add((cur[0], cur[1] + 2))      # Bauchlinie: Doppelrohr vorn
+        prev = cur
+    cx, cy = prev
+    for i in range(14):
+        a = i / 13 * math.pi * 1.5
+        pts.add((int(round(cx + 2 + 3 * math.sin(a))), int(round(cy - 3 + 3 * math.cos(a)))))
+    # Rückenzacken
+    for x in range(20, 56, 5):
+        u = (x - 15) / 44
+        y = 12 + 6.5 * math.sin(u * math.pi * 2.0) * (1.0 - 0.35 * u)
+        pts.add((x, int(round(y)) - 2))
+    # Beine mit Krallen
+    for x0 in (24, 44):
+        u = (x0 - 15) / 44
+        y = int(round(12 + 6.5 * math.sin(u * math.pi * 2.0) * (1.0 - 0.35 * u))) + 3
+        for k in range(3):
+            pts.add((x0 - k, y + k))
+        pts.update({(x0 - 3, y + 3), (x0 - 1, y + 3)})
+    # Kopf (blickt nach links): Schnauze, Kiefer, Horn, Auge
+    head = [(5, 9), (6, 8), (7, 8), (8, 7), (9, 7), (10, 7), (11, 8), (12, 9), (13, 10), (14, 11),
+            (4, 10), (4, 11), (5, 12), (6, 12), (7, 13), (8, 13), (9, 13), (10, 13), (11, 13), (12, 13),
+            (13, 12), (10, 6), (11, 5), (12, 4), (13, 4), (12, 6), (8, 5), (7, 4)]
+    pts.update(head)
+    eye = (9, 9)
+    pts.discard(eye)
+
+    def build(state):
+        img = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
+        img.fill(0)
+        c = col if state != "off" else mul(col, 0.22)
+        core = mix(col, WHITE, 0.6)
+        for (x, y) in pts:
+            if 0 <= x < w and 0 <= y < h:
+                img.setPixelColor(x, y, qc(core if state == "on" and (x * 3 + y) % 4 == 0 else c))
+        if state != "off":
+            img.setPixelColor(eye[0], eye[1], qc((255, 80, 90)))
+        return img
+
+    return build("on"), build("off"), build("emit"), (4, 11)
+
+
 class Lamp:
     __slots__ = ("x", "L", "y", "arm", "color", "seed", "flicker")
 
@@ -347,12 +403,14 @@ class City:
         self.signs, self.lamps, self.vents, self.blinks = [], [], [], []
         self.billboards, self.flames, self.lanterns, self.tvs = [], [], [], []
         self.searchlights = []
+        self.ramen_spots = []
         self.exit_x = length
         self._sky()
         self._clouds()
         self._far()
         self._mid()
         self._facade()
+        self._holos()
         self._ground()
         self._fog_tex()
         self._cloud_bank()
@@ -696,8 +754,8 @@ class City:
         self._street_props(p, e, fac, rng, base)
         # Nudelstände an den deterministischen Positionen (Herzen auffüllen)
         for rx in procgen.ramen_positions(self.length, self.seed, self.zone):
-            lx = fac.lx(rx * fac.factor)
-            if 8 <= lx <= fac.width - 150:
+            lx = fac.lx(rx * fac.factor) - 88
+            if 30 <= lx <= fac.width - 200:
                 self._ramen_booth(p, e, fac, int(lx), base)
         p.end()
         e.end()
@@ -1115,65 +1173,230 @@ class City:
             x += rng.randint(90, 220)
 
     def _ramen_booth(self, p, e, fac, x, base):
-        """Nudelstand: warm erleuchtete Bude, Neon-RAMEN-Schild, Banner, Noren, Lampions."""
+        """Nudelbar im Stil des White Dragon (Blade Runner): offene Theke mit Hockern,
+        Gäste von hinten, Koch hinter dem Tresen, Menü-Täfelchen, nackte Glühbirnen,
+        Noren, rote Papierlaternen, Plastikvorhänge, Neon-Drache auf dem Dach.
+        Alles Lebende (Koch, Zunge, Birnen, Dampf, Tropfen) zeichnet render/scene.py."""
         rng = self.rng
-        w = 156
-        top = base - 58
-        wood_hi = (112, 78, 48)
-        warm = (196, 116, 42)
-        p.fillRect(x, top, w, 54, qc((26, 16, 14)))
-        p.fillRect(x, top, w, 3, qc(wood_hi))
-        # warmes Innenlicht (kräftig, leuchtet mit)
-        for q, a in ((p, 255), (e, 235)):
-            q.fillRect(x + 8, top + 15, w - 16, 30, qc(warm, a))
-        # Flaschenregal (Silhouetten vor dem Licht)
-        for i in range(9):
-            p.fillRect(x + 12 + i * 13, top + 16, 3, rng.randint(5, 10), qc((40, 24, 18)))
-        # Theke + dampfender Suppentopf
-        p.fillRect(x, base - 14, w, 14, qc((32, 20, 16)))
-        p.fillRect(x, base - 14, w, 2, qc(wood_hi))
-        p.setBrush(qc((12, 12, 14)))
-        p.drawEllipse(QRectF(x + 24, base - 22, 24, 10))
-        p.setBrush(qc((200, 202, 208)))
-        p.drawEllipse(QRectF(x + 26, base - 21, 20, 7))
-        # Noren-Vorhang
-        for i in range(6):
-            c = (132, 32, 58) if i % 2 == 0 else (186, 190, 200)
-            p.fillRect(x + 5 + i * 25, top + 3, 21, 13, qc(c))
-        p.fillRect(x + 5, top + 3, 6 * 25 - 4, 1, qc(wood_hi))
-        # Neon-RAMEN-Schild (flackert + Lichthof wie die anderen Schilder)
-        on, off, em = _make_sign(rng, AMBER, "text", "RAMEN")
-        sx = x + (w - on.width()) // 2
-        self.signs.append(Sign(fac.lmin + sx, top - 27, on, off, em, "buzz", rng.randint(0, 99999), AMBER))
-        # dampfende Schale als Bildmarke
-        bx = x + w + 8
-        p.fillRect(bx, top - 6, 4, 62, qc((74, 52, 34)))              # Pfosten
-        for q in (p, e):
-            q.setPen(Qt.PenStyle.NoPen)
-            q.setBrush(qc((206, 210, 214)))
-            q.drawPolygon(QPolygonF([QPointF(bx - 6, top - 30), QPointF(bx + 10, top - 30),
-                                     QPointF(bx + 6, top - 20), QPointF(bx - 2, top - 20)]))
-            q.setBrush(qc(AMBER))
-            q.drawRect(QRectF(bx - 4, top - 32, 12, 2))
-        # hohes Banner mit Kana
-        p.fillRect(bx - 9, top - 6, 22, 68, qc((124, 28, 52)))
-        for i in range(3):
-            g = _glyph(rng)
-            for (gx, gy) in g:
-                p.fillRect(QRectF(bx - 7 + gx, top - 2 + i * 21 + gy, 1, 1), qc((228, 228, 234)))
-        # Lampionkette über der Bude
-        p.setPen(qc((90, 70, 46)))
-        p.drawLine(x, top - 2, x + w, top - 2)
+        w = 176
+        L0 = fac.lmin + x
+        roof = base - 62                     # Oberkante Vordach
+        lip = base - 55                      # Vorderkante Vordach
+        top_c = base - 18                    # Thekenplatte
+        wood, wood_hi, wood_dk = (74, 46, 30), (150, 100, 60), (34, 20, 16)
+        spot = dict(L=L0, w=w, base=base, bulbs=[], seats=[], drips=[], lanterns=[])
+        # Alles Lebende der Häuser hinter der Bude entfernen (Schilder, TVs, Lampions,
+        # Blinklichter, Dampf, Laternenlicht) und deren Leuchtschicht löschen.
+        X0, X1, Y0 = L0 - 28, L0 + w + 22, base - 98
+
+        def inside(L, y, ww=0, hh=0):
+            return L + ww > X0 and L < X1 and y + hh > Y0
+
+        self.signs = [s_ for s_ in self.signs if not inside(s_.L, s_.y, s_.w, s_.h)]
+        self.tvs = [v for v in self.tvs if not inside(v[0], v[1], v[2], v[3])]
+        self.lanterns = [v for v in self.lanterns if not inside(v[0], v[1])]
+        self.blinks = [b for b in self.blinks if b[0] != "fac" or not inside(b[1], b[2])]
+        self.vents = [v for v in self.vents if not inside(v[0], v[1])]
+        self.lamps = [lp for lp in self.lamps if not inside(lp.L - lp.arm - 6, lp.y - 6, lp.arm + 12, 12)]
+        e.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+        e.fillRect(x - 28, Y0, w + 50, base - Y0 + 1, QColor(0, 0, 0, 0))
+        e.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+        # Rückwand: warmes, aber gedämpftes Innenlicht (kein Ausbrennen im Dither)
+        g = QLinearGradient(0, lip, 0, top_c)
+        g.setColorAt(0.0, qc((40, 22, 20)))
+        g.setColorAt(0.6, qc((86, 48, 28)))
+        g.setColorAt(1.0, qc((112, 62, 32)))
+        p.fillRect(QRectF(x + 6, lip, w - 12, top_c - lip), QBrush(g))
+        # Menü-Täfelchen (Holzschilder mit Pinselzeichen)
+        tx = x + 12
+        while tx < x + w - 18:
+            red = rng.random() < 0.25
+            p.fillRect(tx, base - 46, 7, 8, qc((150, 40, 50) if red else (190, 172, 140)))
+            p.fillRect(tx, base - 46, 7, 1, qc((214, 198, 170) if not red else (190, 70, 80)))
+            ink = (232, 224, 210) if red else (52, 28, 20)
+            for (gx, gy) in _glyph(rng):
+                if gy < 5 and gx < 5:
+                    p.fillRect(tx + 1 + gx, base - 45 + gy, 1, 1, qc(ink))
+            tx += 10
+        # Regal: Schalen-Stapel, Flaschen, Dosen
+        p.fillRect(x + 10, base - 34, w - 20, 1, qc(wood_hi))
+        p.fillRect(x + 10, base - 33, w - 20, 1, qc(wood_dk))
+        sx_ = x + 14
+        while sx_ < x + w - 20:
+            k = rng.random()
+            if k < 0.35:
+                for j in range(rng.randint(2, 4)):
+                    p.fillRect(sx_, base - 36 - j * 2, 6, 2, qc((214, 214, 220) if j % 2 == 0 else (180, 182, 192)))
+                sx_ += 8
+            elif k < 0.7:
+                hgt = rng.randint(5, 8)
+                c = rng.choice(((40, 70, 50), (90, 50, 30), (60, 40, 70)))
+                p.fillRect(sx_, base - 34 - hgt, 2, hgt, qc(c))
+                p.fillRect(sx_, base - 34 - hgt, 1, hgt, qc(mul(c, 1.8)))
+                sx_ += 4
+            else:
+                sx_ += 5
+        # Suppentopf (links) und Wok-Station (rechts) hinter der Theke
+        px_ = x + 22
+        p.fillRect(px_, base - 30, 18, 12, qc((120, 124, 134)))
+        p.fillRect(px_, base - 30, 18, 2, qc((190, 194, 204)))
+        p.fillRect(px_ + 2, base - 28, 2, 10, qc((160, 164, 176)))
+        p.fillRect(px_ - 2, base - 27, 2, 2, qc((90, 92, 100)))
+        p.fillRect(px_ + 18, base - 27, 2, 2, qc((90, 92, 100)))
+        wx_ = x + w - 46
         p.setPen(Qt.PenStyle.NoPen)
-        for k in range(5):
-            lx2 = x + 16 + k * 31
+        p.setBrush(qc((30, 30, 36)))
+        p.drawChord(QRectF(wx_, base - 26, 18, 10), 180 * 16, 180 * 16)
+        p.fillRect(wx_ + 17, base - 23, 7, 1, qc((70, 50, 30)))
+        spot["pot"] = (L0 + px_ - x + 9, base - 31)
+        spot["wok"] = (L0 + wx_ - x + 9, base - 21)
+        # Theke: helle Platte mit warmem Kantenlicht, Lamellenfront, Fußleiste
+        p.fillRect(x + 2, top_c, w - 4, 2, qc(wood_hi))
+        p.fillRect(x + 2, top_c + 2, w - 4, 1, qc((96, 62, 38)))
+        for q, a in ((p, 255), (e, 110)):
+            q.fillRect(x + 4, top_c, w - 8, 1, qc((230, 170, 100), a))
+        p.fillRect(x + 4, top_c + 3, w - 8, 12, qc(wood))
+        for k in range(x + 6, x + w - 6, 4):
+            p.fillRect(k, top_c + 3, 1, 12, qc(wood_dk))
+        p.fillRect(x + 4, base - 4, w - 8, 1, qc((150, 154, 166)))
+        # Hocker + Gäste (von hinten). Der Hocker in der Mitte bleibt frei: „Akimashita!“
+        n = 6
+        free = n // 2
+        xs = [x + 16 + i * ((w - 32) // (n - 1)) for i in range(n)]
+        coats = [(40, 44, 60), (70, 40, 46), (60, 56, 50), (30, 50, 58), (90, 74, 50), (24, 24, 30)]
+        for i, sx in enumerate(xs):
+            p.fillRect(sx - 1, base - 9, 1, 8, qc((150, 154, 166)))
+            p.fillRect(sx - 3, base - 1, 5, 1, qc((110, 114, 126)))
+            p.fillRect(sx - 4, base - 11, 8, 2, qc((150, 30, 44)))
+            p.fillRect(sx - 4, base - 11, 8, 1, qc((200, 60, 70)))
+            spot["seats"].append(L0 + sx - x)
+            if i == free or rng.random() < 0.3:
+                continue
+            c = rng.choice(coats)
+            # Rumpf (leicht nach vorn gebeugt), Schultern mit warmem Gegenlicht
+            p.setBrush(qc(c))
+            p.drawPolygon(QPolygonF([QPointF(sx - 5, base - 11), QPointF(sx - 6, base - 22), QPointF(sx - 3, base - 25),
+                                     QPointF(sx + 4, base - 25), QPointF(sx + 6, base - 21), QPointF(sx + 5, base - 11)]))
+            p.fillRect(sx - 3, base - 25, 7, 1, qc(mix(c, AMBER, 0.55)))
+            p.fillRect(sx - 6, base - 21, 1, 9, qc(mul(c, 0.6)))
+            hair = rng.choice(((20, 16, 14), (60, 40, 30), (140, 130, 120), (14, 14, 18)))
+            p.setBrush(qc(hair))
+            p.drawEllipse(QRectF(sx - 3, base - 31, 6, 6))
+            p.fillRect(sx - 2, base - 31, 4, 1, qc(mix(hair, AMBER, 0.5)))
+            hat = rng.random()
+            if hat < 0.3:        # Hut mit Krempe
+                p.fillRect(sx - 5, base - 29, 10, 1, qc((26, 24, 26)))
+                p.fillRect(sx - 3, base - 33, 6, 4, qc((26, 24, 26)))
+            elif hat < 0.45:     # Kapuze
+                p.setBrush(qc(mul(c, 0.9)))
+                p.drawEllipse(QRectF(sx - 4, base - 32, 8, 8))
+            if rng.random() < 0.35:   # angelehnter Schirm mit Leuchtschaft
+                uc = rng.choice((CYAN, MAGENTA, AMBER))
+                for q in (p, e):
+                    q.setPen(qc(uc))
+                    q.drawLine(sx + 6, base - 1, sx + 9, base - 16)
+                    q.setPen(Qt.PenStyle.NoPen)
+            spot["bowls"] = spot.get("bowls", []) + [L0 + sx - x]
+        spot["cook"] = L0 + xs[free] - x
+        # Vordach: Wellblech mit Lippe, Regen tropft von der Kante
+        p.fillRect(x - 6, roof, w + 12, lip - roof, qc((70, 34, 40)))
+        for k in range(x - 6, x + w + 6, 3):
+            p.fillRect(k, roof, 1, lip - roof, qc((96, 48, 52)))
+        p.fillRect(x - 8, lip - 1, w + 16, 2, qc((40, 18, 24)))
+        p.fillRect(x - 6, roof, w + 12, 1, qc(mul(self.th["rim"], 0.8)))
+        spot["drips"] = [L0 + k for k in range(-4, w + 6, 7)]
+        spot["lip"] = lip + 1
+        # Noren (geteilter Stoffvorhang) mit je einem Zeichen
+        nw = (w - 8) // 6
+        for i in range(6):
+            nx = x + 4 + i * nw
+            c = (34, 38, 92) if i % 2 == 0 else (120, 28, 46)
+            p.fillRect(nx + 1, lip + 1, nw - 2, 8, qc(c))
+            p.fillRect(nx + 1, lip + 8, nw - 2, 1, qc(mul(c, 0.6)))
+            for (gx, gy) in _glyph(rng):
+                if gy < 6:
+                    p.fillRect(nx + nw // 2 - 2 + gx, lip + 2 + gy, 1, 1, qc((214, 214, 222)))
+            if i:
+                spot["bulbs"].append((L0 + nx - x, lip + 4))
+        # Nackte Glühbirnen in den Noren-Spalten
+        for (bl, by) in spot["bulbs"]:
+            bx_ = bl - L0 + x
+            p.fillRect(bx_, lip + 1, 1, 3, qc((20, 16, 14)))
             for q in (p, e):
-                q.setPen(qc(CRIMSON))
-                q.drawLine(lx2, top - 2, lx2, top + 3)
+                q.fillRect(bx_ - 1, by, 3, 3, qc((255, 226, 170)))
+        # Rote Papierlaternen (Chōchin) an beiden Ecken
+        for lx_ in (x - 5, x + w - 2):
+            for q, a in ((p, 255), (e, 220)):
                 q.setPen(Qt.PenStyle.NoPen)
-                q.setBrush(qc(CRIMSON))
-                q.drawEllipse(QRectF(lx2 - 3, top + 3, 6, 8))
-        self.blinks.append(("fac", fac.lmin + x + w // 2, top - 20, AMBER, rng.random() * 3))
+                q.setBrush(qc((200, 40, 50), a))
+                q.drawEllipse(QRectF(lx_ - 4, lip + 1, 9, 12))
+            p.fillRect(lx_ - 3, lip + 1, 7, 1, qc((20, 14, 14)))
+            p.fillRect(lx_ - 3, lip + 12, 7, 1, qc((20, 14, 14)))
+            for (gx, gy) in _glyph(rng):
+                if gy < 6 and gx < 4:
+                    p.fillRect(lx_ - 1 + gx, lip + 3 + gy, 1, 1, qc((30, 10, 12)))
+            spot["lanterns"].append((L0 + lx_ - x, lip + 7))
+        # Seitliche Plastikvorhänge (durchscheinend, mit Lichtkanten)
+        for sx0 in (x, x + w - 7):
+            p.fillRect(sx0, lip + 1, 7, base - lip - 2, qc((190, 200, 214), 38))
+            for k in range(sx0 + 1, sx0 + 7, 3):
+                p.fillRect(k, lip + 1, 1, base - lip - 2, qc((214, 220, 226), 50))
+        # Kisten + Tonne links
+        p.fillRect(x - 22, base - 10, 12, 10, qc((84, 62, 44)))
+        p.fillRect(x - 20, base - 17, 9, 7, qc((96, 72, 50)))
+        p.fillRect(x - 22, base - 10, 12, 1, qc((130, 100, 70)))
+        p.fillRect(x - 8, base - 9, 5, 9, qc((50, 70, 64)))
+        # Gerüst + Neon-Drache auf dem Vordach (Zunge flackert live)
+        on, off, em, tongue = _dragon_sign(rng)
+        dx = x + (w - on.width()) // 2
+        dy = roof - on.height() - 3
+        p.fillRect(dx + 6, dy + on.height() - 2, 1, roof - dy - on.height() + 2, qc((50, 50, 60)))
+        p.fillRect(dx + on.width() - 7, dy + on.height() - 2, 1, roof - dy - on.height() + 2, qc((50, 50, 60)))
+        self.signs.append(Sign(fac.lmin + dx, dy, on, off, em, "steady", rng.randint(0, 99999), (150, 220, 236)))
+        spot["tongue"] = (fac.lmin + dx + tongue[0], dy + tongue[1])
+        on, off, em = _make_sign(rng, AMBER, "text", "RAMEN")
+        rx_ = x + w - on.width() - 2
+        self.signs.append(Sign(fac.lmin + rx_, roof - on.height() - 2, on, off, em, "buzz", rng.randint(0, 99999), AMBER))
+        # hohes Banner mit Kana am Pfosten rechts
+        bx = x + w + 10
+        p.fillRect(bx, roof - 4, 2, base - roof + 4, qc((74, 52, 34)))
+        p.fillRect(bx - 9, roof - 2, 9, 54, qc((124, 28, 52)))
+        p.fillRect(bx - 9, roof - 2, 9, 1, qc((190, 70, 90)))
+        for i in range(3):
+            for (gx, gy) in _glyph(rng):
+                p.fillRect(QRectF(bx - 7 + gx, roof + 2 + i * 15 + gy, 1, 1), qc((228, 228, 234)))
+        self.ramen_spots.append(spot)
+
+    def _holos(self):
+        """Holografische Ballerinas: riesige hinter der Häuserfront (Mittel-Layer),
+        kleine auf Projektorsockeln am Gehweg (Fassaden-Layer)."""
+        rng = random.Random(self.seed * 613 + self.zone * 29 + 3)
+        self.holos = []
+        z = self.zone
+        cols = [(170, 236, 255), (246, 150, 222), (190, 164, 255), (150, 255, 224)]
+        if z == 4:
+            cols = [(255, 206, 130), (255, 230, 190)]
+        n_giant = (1, 1, 2, 1, 2)[z % 5]
+        n_street = (1, 2, 4, 2, 3)[z % 5]
+        span = self.cam_max - self.cam_min
+        for i in range(n_giant):
+            wx = self.cam_min + span * (i + rng.uniform(0.25, 0.75)) / n_giant
+            self.holos.append(dict(kind="giant", L=wx * MID_F, base=self.fy - rng.randint(4, 26),
+                                   h=rng.uniform(112, 134), col=rng.choice(cols), seed=rng.randint(0, 999),
+                                   mirror=rng.random() < 0.5))
+        fac = self.facade
+        busy = [(sp["L"] - 40, sp["L"] + sp["w"] + 40) for sp in self.ramen_spots]
+        busy.append((fac.lmin + self.exit_L - 90, fac.lmin + self.exit_L + 90))
+        tries = 0
+        while len([h for h in self.holos if h["kind"] == "street"]) < n_street and tries < 200:
+            tries += 1
+            wx = rng.uniform(self.cam_min + 120, self.cam_max - 160)
+            L = wx * fac.factor
+            if any(a <= L <= b for a, b in busy):
+                continue
+            busy.append((L - 60, L + 60))
+            self.holos.append(dict(kind="street", L=L, base=self.fy + 3, h=rng.uniform(74, 88),
+                                   col=rng.choice(cols), seed=rng.randint(0, 999), mirror=rng.random() < 0.5))
 
     def _alley(self, p, e, fac, rng, x, bw, base):
         th = self.th

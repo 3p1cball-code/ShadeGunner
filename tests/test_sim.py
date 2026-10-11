@@ -133,6 +133,7 @@ def test_line_of_fire_blocker():
     w = World(seed=4, zone_index=2)
     npcs = [a for a in w.actors if not a.player][:2]
     t, b = npcs
+    w.actors = [w.player, t, b]
     w.player.x, w.player.depth = 100.0, 0.5
     t.x, t.depth = 180.0, 0.5
     b.x, b.depth = 140.0, 0.5
@@ -277,20 +278,74 @@ def test_jump_dodges_punch():
     assert p.hp == hp, "Schlag hätte im Sprung ins Leere gehen müssen"
 
 
-def test_vehicle_hits_player_in_lane():
+def test_vehicle_brakes_for_player_in_lane():
     w = World(seed=6, zone_index=2)
     _quiet(w)
     w.actors = [w.player]
     p = w.player
     lane, dr = config.LANES[1]
     p.depth = lane
-    w.vehicles.append(dict(x=p.x - dr * 120, depth=lane, dir=dr, speed=200.0, kind="car", L=87.0, h=25.5,
-                           seed=1, honk=False, uid=-1))
-    hp = p.hp
-    for _ in range(90):
+    w.vehicles.append(dict(x=p.x - dr * 220, depth=lane, dir=dr, speed=170.0, vmax=170.0, kind="car",
+                           L=87.0, h=25.5, seed=1, honk=False, uid=-1, react=0.3))
+    hp, honks = p.hp, 0
+    for _ in range(int(5 / DT)):
         w.update(DT, {})
-    assert p.hp == hp - 1, "Fahrzeug hat den Spieler nicht erwischt"
+        honks += sum(1 for e in w.events if e[0] == "honk")
+        w.events.clear()
+    assert p.hp == hp, "gebremstes Auto darf kein Herz kosten"
+    assert honks >= 1, "Auto hat den Spieler in der Spur nicht angehupt"
+    v = w.vehicles[0]
+    assert v["speed"] < 20.0, f"Auto bremst nicht ({v['speed']:.0f})"
+
+
+def test_vehicle_bump_costs_no_heart():
+    w = World(seed=6, zone_index=2)
+    _quiet(w)
+    w.actors = [w.player]
+    p = w.player
+    lane, dr = config.LANES[0]
+    p.depth = lane
+    hp = p.hp
+    w.vehicles.append(dict(x=p.x, depth=lane, dir=dr, speed=0.0, vmax=0.0, kind="car",
+                           L=87.0, h=25.5, seed=1, honk=False, uid=-1, react=0.3))
+    bumps = 0
+    for _ in range(30):
+        w.update(DT, {})
+        bumps += sum(1 for e in w.events if e[0] == "bump")
+        w.events.clear()
+    assert bumps >= 1, "kein Rempler"
+    assert p.hp == hp, "Rempler darf kein Herz kosten"
+    assert abs(p.depth - lane) > config.LANE_HALF, "Spieler nicht aus der Spur geschoben"
+
+
+def test_vehicle_frontal_hit_at_speed():
+    w = World(seed=6, zone_index=2)
+    _quiet(w)
+    w.actors = [w.player]
+    w.car_escape = 0.0                       # keine Rettung in letzter Sekunde
+    p = w.player
+    lane, dr = config.LANES[1]
+    p.depth = lane
+    hp = p.hp
+    w.vehicles.append(dict(x=p.x - dr * 20, depth=lane, dir=dr, speed=200.0, vmax=200.0, kind="car",
+                           L=87.0, h=25.5, seed=1, honk=False, uid=-1, react=0.6))
+    for _ in range(30):
+        w.update(DT, {})
+        w.events.clear()
+    assert p.hp == hp - 1, "frontal mit Tempo muss ein Herz kosten"
     assert abs(p.depth - lane) > config.LANE_HALF, "Spieler nicht aus der Spur geschleudert"
+
+
+def test_engine_sound_quieter_when_dense():
+    def avg_vol(z):
+        w = World(seed=7, zone_index=z)
+        vols = []
+        for _ in range(int(12 / DT)):
+            w.update(DT, {})
+            vols += [e[3] for e in w.events if e[0] == "vehicle"]
+            w.events.clear()
+        return sum(vols) / max(1, len(vols))
+    assert avg_vol(0) > avg_vol(2) + 0.3, "dichter Verkehr klingt nicht leiser"
 
 
 def test_npcs_dodge_traffic():
@@ -394,6 +449,244 @@ def test_blackout_and_patrol_reveal():
         w.update(DT, {})
         rep.state, rep.vx = "idle", 0.0
     assert "pupils" in rep.revealed, "Augenreflex im Stromausfall nicht aufgedeckt"
+
+
+def test_spinner_lands_blocks_and_lifts_off():
+    w = World(seed=12, zone_index=2)
+    _quiet(w)
+    w.obstacles.clear()
+    w.ramen.clear()
+    p = w.player
+    p.x, p.depth = 600.0, 0.8
+    w.camera_x = p.x + 40
+    old = config.SPINNER_LAND_CHANCE
+    config.SPINNER_LAND_CHANCE = 1.0
+    try:
+        w.patrol_cd = 0.1
+        landed = False
+        for _ in range(int(25 / DT)):
+            w.update(DT, {})
+            P = w.patrol
+            if P is not None and P["phase"] == "landed":
+                landed = True
+                assert any(o["kind"] == "spinner" for o in w.obstacles), "gelandeter Spinner blockiert nicht"
+                assert w.blocked(P["x"], config.LAND_DEPTH, 0.0), "Landeplatz nicht gesperrt"
+                assert w.blocked(P["x"], config.LAND_DEPTH, 30.0), "über den Spinner springen darf nicht gehen"
+            if landed and (P is None or P["phase"] in ("lift", "fly")):
+                break
+        assert landed, "Spinner ist nie gelandet"
+        assert not any(o["kind"] == "spinner" for o in w.obstacles), "Sperre nach dem Abheben nicht entfernt"
+    finally:
+        config.SPINNER_LAND_CHANCE = old
+
+
+def test_spinner_downdraft_pushes_away():
+    w = World(seed=13, zone_index=2)
+    _quiet(w)
+    w.obstacles.clear()
+    civ = next(a for a in w.actors if not a.player)
+    civ.state, civ.vx, civ.timer = "idle", 0.0, 99
+    civ.x, civ.depth, civ.target_depth = 500.0, config.LAND_DEPTH, config.LAND_DEPTH
+    w.patrol = dict(x=490.0, dir=1, t=10.0, life=90.0, ph=0.0, on=0.0, bx=0.0, bd=0.5, leaving=False,
+                    mode="land", phase="descend", alt=0.3, face=1, obs=None, land_t=0.0, lx=490.0)
+    x0 = civ.x
+    for _ in range(30):
+        w._update_patrol(DT)
+    assert civ.x > x0 + 5, "Abwind hat die Figur nicht weggeschoben"
+
+
+def test_origami_pickup():
+    w = World(seed=14, zone_index=4)
+    _quiet(w)
+    assert w.origami, "keine Origami-Figur platziert"
+    o = w.origami[0]
+    assert o["kind"] == "einhorn", "Tyrell-Zone sollte das Einhorn haben"
+    p = w.player
+    w.scan_charges = 0.0
+    score = w.run.score
+    p.x, p.depth = o["x"] - 8, o["depth"]
+    w.update(DT, {})
+    assert o["taken"] and w.stats["origami"], "Origami nicht aufgehoben"
+    assert w.run.score == score + config.POINTS_ORIGAMI
+    assert w.scan_charges >= w.scan_max - 0.01, "Scanner nicht voll geladen"
+    assert w.run.origami == ["EINHORN"]
+
+
+def test_ramen_cook_greets():
+    w = World(seed=15, zone_index=1)
+    _quiet(w)
+    r = w.ramen[0]
+    p = w.player
+    p.hp = w.run.max_hp - 1
+    p.x, p.depth = r["x"] - 40, 0.3
+    w.update(DT, {})
+    assert r.get("greet"), "Koch hat nicht gegrüßt"
+    assert any("IRASSHAI" in f["text"] for f in w.floaters)
+
+
+def _crowd_around(w, n=8, stim_every=3):
+    """n Menschen dicht vor dem Spieler, jeder stim_every-te mit REIZ-Tell."""
+    p = w.player
+    humans = [a for a in w.actors if not a.player and not a.is_replicant][:n]
+    for i, a in enumerate(humans):
+        a.x, a.depth, a.target_depth = p.x + 20 + i * 8, p.depth, p.depth
+        a.state, a.vx, a.timer = "idle", 0.0, 99
+        a.tells["stimulus"] = (i % stim_every == 0)
+        a.revealed.discard("stimulus")
+    return humans
+
+
+def test_shout_ducks_crowd_and_reveals_stimulus():
+    w = World(seed=21, zone_index=2)
+    _quiet(w)
+    w.actors = [a for a in w.actors if a.player or not a.is_replicant]
+    config_scatter, config_unrest = config.SHOUT_SCATTER, config.UNREST_PER_SHOUT
+    config.SHOUT_SCATTER = config.UNREST_PER_SHOUT = 0.0
+    try:
+        crowd = _crowd_around(w)
+        assert w.shout_crowd() == "ok"
+        for _ in range(int(1.5 / DT)):          # Welle + Schrecksekunde abwarten
+            w._update_reactions(DT)
+        for a in crowd:
+            assert "stimulus" in a.revealed, "Ruf hat REIZ nicht aufgedeckt"
+            want = "freeze" if a.tells["stimulus"] else "duck"
+            assert a.state == want, f"{a.state} statt {want}"
+        assert w.shout_crowd() == "cooldown", "Ruf ohne Abklingzeit"
+    finally:
+        config.SHOUT_SCATTER, config.UNREST_PER_SHOUT = config_scatter, config_unrest
+
+
+def test_shot_passes_over_ducking():
+    w = World(seed=22, zone_index=2)
+    _quiet(w)
+    p = w.player
+    rep = next(a for a in w.actors if a.is_replicant)
+    civ = next(a for a in w.actors if not a.player and not a.is_replicant)
+    rep.x, rep.depth, rep.state, rep.timer = p.x + 80, p.depth, "idle", 99
+    civ.x, civ.depth, civ.state, civ.timer = p.x + 40, p.depth, "idle", 99
+    w.actors = [p, rep, civ]
+    w.target = rep
+    assert w.line_of_fire(rep) is civ, "Passant sollte die Schusslinie blockieren"
+    civ.state, civ.timer = "duck", 3.0
+    assert w.line_of_fire(rep) is rep, "Kugel geht nicht über den Geduckten"
+    w._panic_area(p.x, 200.0)
+    assert civ.state == "duck", "Geduckter steht bei Schüssen wieder auf"
+
+
+def test_shout_wave_reaches_far_later():
+    w = World(seed=23, zone_index=2)
+    _quiet(w)
+    w.actors = [a for a in w.actors if a.player or not a.is_replicant]
+    p = w.player
+    near, far = [a for a in w.actors if not a.player][:2]
+    for a, dx in ((near, 15.0), (far, 140.0)):
+        a.x, a.depth, a.target_depth, a.state, a.timer = p.x + dx, p.depth, p.depth, "idle", 99
+        a.tells["stimulus"] = False
+        a.react_t = 0.2
+    w.shout_crowd(160.0)
+    for _ in range(int(0.35 / DT)):
+        w._update_reactions(DT)
+    assert near.state in ("duck", "panic") and far.state == "idle", "Welle wirkt nicht verzögert"
+    for _ in range(int(0.8 / DT)):
+        w._update_reactions(DT)
+    assert far.state in ("duck", "panic"), "Ferner Passant hat nicht reagiert"
+
+
+def test_hold_v_vs_tap():
+    w = World(seed=24, zone_index=2)
+    _quiet(w)
+    p = w.player
+    civ = next(a for a in w.actors if not a.player and not a.is_replicant)
+    civ.x, civ.depth, civ.state, civ.timer = p.x + 30, p.depth, "idle", 99
+    civ.tells["stimulus"] = False
+    w.target = civ
+    w._shout_input(DT, True)
+    w._shout_input(DT, False)                 # kurz getippt -> Ansprache
+    assert w.talk_cd > 0 and w.shout_cd == 0, "Tippen sollte ansprechen, nicht rufen"
+    for _ in range(int(1.0 / DT)):
+        w._update_reactions(DT)
+    assert civ.state == "hands", f"Angesprochener hebt nicht die Hände ({civ.state})"
+    for _ in range(int(0.8 / DT)):
+        w._shout_input(DT, True)              # gehalten -> Ruf an die Menge
+    r = w.shout_radius()
+    w._shout_input(DT, False)
+    assert w.shout_cd > 0 and w.wave is not None and w.wave["R"] == r
+    assert w.unrest > 0.3, "Ruf erhöht die Unruhe nicht"
+
+
+def test_groups_loiter_and_are_scannable():
+    w = World(seed=25, zone_index=2)
+    _quiet(w)
+    grp = [a for a in w.actors if a.group >= 0]
+    side = [a for a in w.actors if a.home is not None]
+    assert len(grp) >= 6 and side, "keine Gruppen / Gehweg-Passanten"
+    assert all(a.state == "loiter" for a in grp)
+    for _ in range(int(3 / DT)):
+        w.update(DT, {})
+    still = [a for a in grp if a.alive and a.state == "loiter"]
+    assert still and all(abs(a.vx) < 1e-6 for a in still), "Gruppe steht nicht"
+    a = still[0]
+    p = w.player
+    p.x, p.depth = a.x - 30, max(config.DEPTH_MIN, a.depth)
+    w.target = a
+    w.scan_charges = 3.0
+    assert w.scan()[0] == "ok", "Gruppenmitglied nicht scanbar"
+    assert min(x.depth for x in side) < config.DEPTH_MIN, "Gehweg-Band nicht hinter der Spielertiefe"
+
+
+def test_difficulty_scales_density():
+    from shadegunner.sim import Run
+    n = {}
+    for d in ("leicht", "normal", "schwer"):
+        w = World(Run(5, d), seed=5, zone_index=2)
+        n[d] = len(w.actors)
+    assert n["leicht"] < n["normal"] < n["schwer"], n
+
+
+def test_traffic_denser_and_slower_by_zone():
+    w0, w2 = World(seed=7, zone_index=0), World(seed=7, zone_index=2)
+    assert w2.traffic_gap < w0.traffic_gap and w2.traffic_slow < w0.traffic_slow
+    for w in (w0, w2):
+        for _ in range(int(20 / DT)):
+            w.update(DT, {})
+    near = [v for v in w2.vehicles if abs(v["x"] - w2.camera_x) < 330]
+    assert len(near) >= 3, "Innenstadt-Verkehr zu dünn"
+    assert max(v["speed"] for v in w2.vehicles) < 0.8 * 230.0, "dichter Verkehr fährt zu schnell"
+    # Kolonne: niemand fährt in den Vordermann
+    for lane, _d in config.LANES:
+        q = sorted((v for v in w2.vehicles if v["depth"] == lane), key=lambda v: v["x"])
+        for a, b in zip(q, q[1:]):
+            assert b["x"] - a["x"] > (a["L"] + b["L"]) * 0.5 - 2.0, "Fahrzeuge überlappen"
+
+
+def test_parked_cars_block_and_cannot_be_jumped():
+    w = World(seed=7, zone_index=2)
+    pk = [o for o in w.obstacles if o["kind"] == "parked"]
+    assert len(pk) >= 5, "zu wenig parkende Fahrzeuge"
+    o = pk[0]
+    assert w.blocked(o["x"], o["d"], 0.0) and w.blocked(o["x"], o["d"], config.JUMP_V ** 2 / (2 * config.GRAVITY))
+    for a in w.actors:
+        if not a.player:
+            assert not any(abs(a.x - q["x"]) < q["w"] and abs(a.depth - q["d"]) < q["dd"] for q in pk), \
+                "Passant steht im parkenden Auto"
+
+
+def test_steam_slows_observation():
+    w = World(seed=7, zone_index=2)
+    _quiet(w)
+    m = w.manholes[0]
+    m["base"], m["every"] = 1.0, 1e9
+    w._update_steam(DT)
+    assert w.steam_at(m["x"] + m["drift"], m["d"]) > 0.8 and w.steam_at(m["x"] + 200, m["d"]) == 0.0
+    a = next(x for x in w.actors if not x.player)
+    w.player.x, w.player.depth = m["x"] - 40, max(config.DEPTH_MIN, m["d"])
+    gain = {}
+    for where in ("frei", "dampf"):
+        a.x, a.depth = (m["x"] + m["drift"], m["d"]) if where == "dampf" else (m["x"] - 80, m["d"])
+        a.exposure, w.target = 0.0, a
+        w._observe(0.1)
+        gain[where] = a.exposure
+    assert gain["dampf"] < gain["frei"] * 0.5, gain
 
 
 def main():

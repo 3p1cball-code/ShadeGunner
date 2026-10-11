@@ -223,6 +223,10 @@ class HUD:
                         self._t(p, 16, y, "→ FAHRZEUG", col, 2)
                     else:
                         self._t(p, HW - 16, y, "FAHRZEUG ←", col, 2, "right")
+        P = getattr(world, "patrol", None)
+        if P is not None and P.get("phase") in ("descend", "landed"):
+            txt = "SPINNER LANDET - ABSTAND HALTEN" if P["phase"] == "descend" else "POLIZEIKONTROLLE AM BODEN"
+            self._t(p, HW // 2, HH - 176, txt, (90, 140, 255) if int(t * 4) % 2 else MAGENTA, 2, "center")
         if getattr(world, "watched", False):
             col = RED if int(t * 3) % 2 else AMBER
             self._t(p, HW // 2, HH - 150, "IM SUCHLICHT - DIE POLIZEI SIEHT ZU", col, 2, "center")
@@ -323,7 +327,7 @@ class HUD:
             self._t(p, ox + 14, oy + 128, line2, PALE if not done else SLATE)
         # oben rechts
         rx = HW - 34 - 410
-        self._box(p, rx, oy, 410, 88)
+        self._box(p, rx, oy, 410, 136)
         self._t(p, rx + 14, oy + 12, "INTEGRITÄT", ASH)
         hx = rx + 160
         for i in range(run.max_hp):
@@ -344,6 +348,18 @@ class HUD:
         sus = world.suspicion
         col = AMBER if sus < 0.66 else (RED if int(t * 4) % 2 == 0 else CRIMSON)
         self._bar(p, rx + 160, oy + 60, 230, 10, sus, col)
+        # Ruf (V): bereit / lädt
+        cd = getattr(world, "shout_cd", 0.0)
+        full = config.SHOUT_CD * world.run.mods.get("shout_cd", 1.0)
+        self._t(p, rx + 14, oy + 82, "RUF  V", ASH)
+        if cd <= 0:
+            self._t(p, rx + 160, oy + 82, "BEREIT", CYAN)
+            self._t(p, rx + 390, oy + 82, "HALTEN", SLATE, 2, "right")
+        else:
+            self._bar(p, rx + 160, oy + 84, 230, 10, 1.0 - cd / max(0.1, full), TEAL)
+        un = getattr(world, "unrest", 0.0)
+        self._t(p, rx + 14, oy + 106, "UNRUHE", ASH)
+        self._bar(p, rx + 160, oy + 108, 230, 10, un, AMBER if un < 0.6 else RED)
         # Fortschritt (Mitte oben)
         px0, pw = HW // 2 - 160, 320
         py = oy + 22
@@ -368,6 +384,15 @@ class HUD:
         if self._msg_t > 0 and self._msg:
             col = RED if ("MENSCH" in self._msg or "entkommen" in self._msg) else PALE
             self._t(p, HW // 2, HH - 120, self._msg.upper(), col, 2, "center", min(1.0, self._msg_t))
+        hold = getattr(world, "shout_hold", -1.0)
+        if hold >= config.SHOUT_TAP:
+            if world.shout_cd > 0:
+                self._t(p, HW // 2, HH - 92, "RUF LÄDT NOCH - LOSLASSEN BRICHT AB", SLATE, 2, "center")
+            else:
+                k = min(1.0, (hold - config.SHOUT_TAP) / config.SHOUT_CHARGE)
+                self._t(p, HW // 2, HH - 92, f"LOSLASSEN: ALLE RUNTER!   RADIUS {int(k * 100):3d}%", AMBER, 2, "center")
+        elif hold >= 0.0:
+            self._t(p, HW // 2, HH - 92, "TIPPEN = ZIEL ANSPRECHEN   HALTEN = MENGE", SLATE, 2, "center")
         if world.aiming:
             b, tg = world.blocker, world.target
             hint = "      C / RMT = ABBRECHEN"
@@ -526,6 +551,8 @@ class HUD:
         ("AUFLÖSUNG", lambda s: f"{s['resolution'][0]} x {s['resolution'][1]}", "cycle"),
         ("SCANLINES", lambda s: "AN" if s["scanlines"] else "AUS", "toggle"),
         ("RENDERER", lambda s: "GPU" if s.get("renderer") != "software" else "SOFTWARE", "toggle"),
+        ("SCHWIERIGKEIT", lambda s: config.DIFFICULTY.get(s.get("difficulty", "normal"),
+                                                          config.DIFFICULTY["normal"])["label"], "cycle"),
     ]
 
     def _settings(self, p, ui):
@@ -548,6 +575,9 @@ class HUD:
         note = y + len(self.SETTING_ROWS) * (rowh + gap) + 8
         if s.get("renderer") == "software":
             self._t(p, HW // 2, note, "RENDERER WECHSELT MIT DEM NÄCHSTEN START", SLATE, 2, "center")
+            note += 24
+        if self.SETTING_ROWS[sel][0] == "SCHWIERIGKEIT":
+            self._t(p, HW // 2, note, "MEHR MENSCHEN JE VIERTEL - GILT AB DEM NÄCHSTEN EINSATZ", SLATE, 2, "center")
         self._t(p, HW // 2, HH - 70, "▲▼  WÄHLEN      ← →  ÄNDERN      ESC / S  ZURÜCK", ASH, 2, "center")
 
     def _pause(self, p):
@@ -566,6 +596,8 @@ class HUD:
                 ("ENTKOMMEN", str(st["escaped"]), AMBER if st["escaped"] else ASH),
                 ("SCANS / SCHÜSSE", f"{st['scans']} / {st['shots']}", ASH),
                 ("ZEIT", f"{int(st['time']) // 60}:{int(st['time']) % 60:02d}", ASH),
+                ("ORIGAMI", (world.origami[0]["name"] if world.origami else "-") if st.get("origami")
+                 else "NICHT GEFUNDEN", PALE if st.get("origami") else SLATE),
                 ("PUNKTE (SEKTOR)", f"{st['score']:+d}", WHITE)]
         y = 150
         for lbl, val, col in rows:
@@ -613,6 +645,7 @@ class HUD:
         rows = [("SEKTOR ERREICHT", f"{world.zone_index + 1}/5"),
                 ("REPLIKANTEN", str(tot["reps"])), ("MENSCHEN", str(tot["civs"])),
                 ("ENTKOMMEN", str(tot["escaped"])), ("UPGRADES", str(len(run.upgrades))),
+                ("ORIGAMI", f"{len(getattr(run, 'origami', []))}/5"),
                 ("PUNKTE", f"{max(0, run.score):06d}")]
         y = 240
         for lbl, val in rows:
@@ -630,7 +663,8 @@ class HUD:
             ("STEUERUNG", WHITE),
             ("A D / PFEILE        GEHEN            SHIFT  SPRINTEN", ASH),
             ("W S / PFEILE        TIEFE (VOR / ZURÜCK IN DER STRASSE)", ASH),
-            ("SPACE / C           SPRINGEN (ÜBER HINDERNISSE, SCHLÄGEN AUSWEICHEN)", ASH),
+            ("SPACE               SPRINGEN (ÜBER HINDERNISSE, SCHLÄGEN AUSWEICHEN)", ASH),
+            ("V / MITTLERE MT     TIPPEN: ZIEL ANSPRECHEN   HALTEN+LOSLASSEN: \"ALLE RUNTER!\"", ASH),
             ("MAUS ZEIGEN/KLICKEN ZIEL WÄHLEN    Q / TAB / RAD  ZIEL WECHSELN", ASH),
             ("R / RECHTE MT       GEWÄHLTES ZIEL SCANNEN (1 LADUNG)", ASH),
             ("E / LINKE MT        HALTEN = ZIELEN, LOSLASSEN = SCHIESSEN", ASH),
@@ -649,11 +683,16 @@ class HUD:
             ("KOPFGELD: DER BESCHRIEBENE NEXUS-6 BRINGT EXTRA - VORSICHT, DOPPELGÄNGER.", PALE),
             ("FAHRZEUGE AUF DEN SPUREN AUSWEICHEN. SUCHLICHT UND STROMAUSFALL", PALE),
             ("MACHEN AUGENREFLEXE SICHTBAR - ABER IM SUCHLICHT SIEHT DIE POLIZEI ZU.", PALE),
+            ("RUF: WER REGLOS STEHEN BLEIBT, ZEIGT DEN REIZ-TELL. GEDUCKTE: DIE KUGEL GEHT DRÜBER.", PALE),
+            ("JEDER RUF MACHT DIE STRASSE UNRUHIGER: MEHR LEUTE RENNEN, REPLIKANTEN WERDEN NERVÖS.", PALE),
+            ("LANDET EIN SPINNER: ABWIND SCHIEBT ALLE WEG, DANN KONTROLLE VOM BODEN AUS.", PALE),
+            ("NUDELBAR: KURZ AN DER THEKE STEHEN = +1 HERZ.  GAFFS ORIGAMI: SCANNER VOLL.", PALE),
         ]
-        w, h = 1120, len(lines) * 26 + 50
+        lh = 23
+        w, h = 1160, len(lines) * lh + 40
         x, y = (HW - w) // 2, (HH - h) // 2
         self._box(p, x, y, w, h, border=CYAN, alpha=240)
-        yy = y + 24
+        yy = y + 20
         for s, col in lines:
             self._t(p, x + 30, yy, s, col, 2)
-            yy += 26
+            yy += lh

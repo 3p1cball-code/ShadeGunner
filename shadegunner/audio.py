@@ -26,6 +26,7 @@ from array import array
 SR = 22050
 MSR = 32000            # Abtastrate Musik/Stereo
 VERSION = "audio-v2"
+DONE_TAG = "ok-zones1"     # ändern, wenn neue Klänge dazukommen -> Hilfsprozess baut nach
 
 
 def cache_dir():
@@ -219,9 +220,12 @@ BASIC = {
     "leap": lambda: sfx_noise_burst(0.35, 0.18, 7, 0.45, seed=23),
     "car_hit": lambda: sfx_noise_burst(0.6, 0.05, 6, 0.9, seed=24, thump=1.0, f_thump=48),
     "honk": lambda: sfx_beeps((311, 247), 0.22, 0.03, 0.5, "square"),
+    "bump": lambda: sfx_noise_burst(0.18, 0.12, 18, 0.5, seed=25, thump=0.5, f_thump=90),
     "bounty": lambda: sfx_beeps((392, 494, 587, 784), 0.12, 0.0, 0.45),
     "ramen": lambda: sfx_beeps((523, 659, 784, 1046), 0.1, 0.02, 0.42),
     "boss": lambda: sfx_tone(150, 52, 1.8, 0.5, True, 0.8),
+    "shout": lambda: sfx_tone(420, 980, 0.42, 0.5, True, 1.4),
+    "talk": lambda: sfx_tone(700, 940, 0.16, 0.4, True, 5.0),
     "rain": rain_loop,
 }
 
@@ -512,6 +516,284 @@ def _np_sounds():
         sig = hum * 0.7 + buzz * np.exp(-t * 2)
         return stereo_out(sig, sig)
 
+    # ------------------------------------------------------------------ Zonen-Soundtracks
+    # Zone 0 behält `soundtrack()`. Ab Zone 1 wird es mit der Straße dichter: mehr
+    # Stimmen, Arpeggio, Chor, Industrie-Klänge; dazu je Zone eine *taktgleiche*
+    # Rhythmus-Spur (pulse_zN), die das Spiel nach Spannung lauter/leiser mischt.
+    def hz(n):                                  # MIDI-Note -> Hz
+        return 440.0 * 2 ** ((n - 69) / 12)
+
+    # Akkorde als MIDI: [Grundton(tief), Stimmen ...]
+    ZT = {
+        1: dict(seed=11, chord_s=8.0, bpm=90, cut=520.0, pad=0.040, arp=(8, 0.030), choir=0.0, bells=0.03,
+                lead=(1, 3), clank=0.0, horn=0.0,
+                chords=[[38, 50, 57, 62, 65, 69, 76], [34, 46, 58, 62, 65, 69, 74],
+                        [31, 43, 58, 62, 65, 69, 74], [33, 45, 57, 62, 64, 67, 76]]),          # Dm9 Bbmaj7 Gm9 A7sus
+        2: dict(seed=12, chord_s=8.0, bpm=90, cut=600.0, pad=0.038, arp=(16, 0.028), choir=0.030, bells=0.03,
+                lead=(1, 3), clank=0.0, horn=0.0,
+                chords=[[39, 51, 58, 63, 66, 70, 77], [35, 47, 59, 63, 66, 70, 75],
+                        [32, 44, 59, 63, 66, 68, 75], [34, 46, 58, 63, 65, 68, 72]]),          # Ebm9 Bmaj7 Abm9 Bb7sus
+        3: dict(seed=13, chord_s=6.4, bpm=112.5, cut=430.0, pad=0.036, arp=(16, 0.022), choir=0.024, bells=0.0,
+                lead=(2,), clank=0.05, horn=0.10,
+                chords=[[36, 48, 55, 60, 62, 63, 67], [32, 44, 55, 60, 63, 67, 72],
+                        [29, 41, 56, 60, 63, 65, 72], [31, 43, 55, 60, 62, 65, 71]]),          # Cm(add9) Abmaj7 Fm9 G7sus
+        4: dict(seed=14, chord_s=8.0, bpm=90, cut=760.0, pad=0.036, arp=(16, 0.026), choir=0.036, bells=0.035,
+                lead=(1, 2, 3), clank=0.0, horn=0.0,
+                chords=[[42, 54, 61, 66, 69, 73, 76], [38, 50, 62, 66, 69, 73, 78],
+                        [35, 47, 59, 62, 66, 69, 78], [37, 49, 61, 65, 68, 71, 80]]),          # F#m7 Dmaj7 Bm7 C#7
+    }
+
+    class Bus:
+        def __init__(self, n):
+            self.N = n
+            self.L = np.zeros(n)
+            self.R = np.zeros(n)
+
+        def add(self, sig, start, pan=0.0, gain=1.0):
+            gl = math.cos((pan + 1) * math.pi / 4) * gain
+            gr = math.sin((pan + 1) * math.pi / 4) * gain
+            pos, i, N = int(start) % self.N, 0, self.N
+            while i < len(sig):
+                m = min(len(sig) - i, N - pos)
+                self.L[pos:pos + m] += sig[i:i + m] * gl
+                self.R[pos:pos + m] += sig[i:i + m] * gr
+                i += m
+                pos = 0
+
+        def verb(self, dur, wet, seeds=(3, 4)):
+            irL = reverb_ir(MSR, dur, seeds[0])
+            irR = reverb_ir(MSR, dur, seeds[1])
+            return self.L + wet * circ_conv(self.L, irL), self.R + wet * circ_conv(self.R, irR)
+
+    def zone_len(c):
+        return int(MSR * c["chord_s"] * len(c["chords"]) * 4)
+
+    def lead_voice(bus, notes, total, base, gain):
+        """Solo-Lead: Portamento, verzögertes Vibrato (wie im Titelthema)."""
+        sr = MSR
+        freq = np.zeros(total)
+        gate = np.zeros(total)
+        prev = notes[0][1]
+        for (t0, f, dur) in notes:
+            s0 = int(sr * t0)
+            s1 = min(total, s0 + int(sr * dur))
+            if s1 <= s0:
+                continue
+            g = min(int(sr * 0.18), s1 - s0)
+            seg_f = np.full(s1 - s0, f)
+            seg_f[:g] = np.linspace(prev, f, g)
+            freq[s0:s1] = seg_f
+            gate[s0:s1] = 1.0
+            prev = f
+        last = notes[0][1]
+        for i in range(0, total, 64):
+            if freq[i] == 0:
+                freq[i:i + 64] = last
+            else:
+                last = freq[i]
+        k = int(sr * 0.25)
+        amp = np.convolve(gate, np.ones(k) / k, mode="same")
+        onset = np.zeros(total)
+        run = 0.0
+        for i in range(0, total, 256):
+            run = run + 256 / sr if gate[i] > 0 else 0.0
+            onset[i:i + 256] = min(1.0, max(0.0, (run - 0.6) / 1.2))
+        t = np.arange(total) / sr
+        fv = freq * (1.0 + 0.009 * onset * np.sin(2 * math.pi * 5.6 * t))
+        sig = saw(fv, sr) * 0.6 + np.sign(np.sin(2 * math.pi * np.cumsum(fv * 0.5) / sr)) * 0.25
+        bus.add(fft_lp(sig, 1900.0, sr) * amp, base, pan=0.15, gain=gain)
+
+    def zone_music(z):
+        c = ZT[z]
+        sr = MSR
+        r = np.random.default_rng(c["seed"])
+        cs = c["chord_s"]
+        seg = int(sr * cs)
+        chords = c["chords"]
+        n_ch = len(chords) * 4
+        N = zone_len(c)
+        bus = Bus(N)
+        beat = 60.0 / c["bpm"]
+        for ci in range(n_ch):
+            ch = chords[ci % len(chords)]
+            sec = ci // len(chords)
+            start = ci * seg
+            n = seg + int(sr * 3.0)
+            t = np.arange(n) / sr
+            amp = env_ar(n, sr, 1.4, 2.8, hold=cs)
+            wah = np.clip(t / 1.2, 0, 1) * np.exp(-np.maximum(0, t - 1.2) * 0.6)
+            # Bläserfläche (CS-80): je dichter die Zone, desto mehr Stimmen/Verstimmung
+            for vi, m in enumerate(ch[1:]):
+                f = hz(m)
+                vib = 1.0 + 0.0035 * np.sin(2 * math.pi * (5.0 + vi * 0.13) * t) * np.clip((t - 1.4) / 2.0, 0, 1)
+                sig = sum(saw(f * (1 + d) * vib, sr) for d in (-0.005, -0.0015, 0.0018, 0.0052))
+                dark = fft_lp(sig, c["cut"] + f * 0.6, sr)
+                bright = fft_lp(sig, 2400.0 + f, sr)
+                voice = (dark + (bright - dark) * (0.2 + 0.8 * wah)) * amp
+                bus.add(voice, start, pan=((vi % 4) - 1.5) * 0.4, gain=c["pad"] * (0.75 if f > 300 else 1.0))
+            f0 = hz(ch[0])
+            drone = (np.sin(2 * math.pi * f0 * t) * 0.8 + 0.4 * fft_lp(saw(f0 * 2, sr), 240.0, sr)) * amp
+            bus.add(drone, start, 0.0, 0.17)
+            # Chor ("Aah"): Sägezähne durch zwei Formanten
+            if c["choir"] > 0 and sec >= 1:
+                for vi, m in enumerate(ch[2:6]):
+                    f = hz(m)
+                    src = sum(saw(f * (1 + d), sr) for d in (-0.006, 0.0, 0.006))
+                    vox = fft_bp(src, 600, 1250, sr) + 0.5 * fft_bp(src, 2300, 3200, sr)
+                    bus.add(vox * amp, start, pan=0.7 * (1 if vi % 2 else -1), gain=c["choir"])
+            # Arpeggio aus den Akkordtönen (FM-Zupfen), ab Abschnitt 2 voller
+            steps, g_arp = c["arp"]
+            if steps and sec >= 1 - (z >= 3):
+                step = beat * (4.0 / steps) * (1 if steps == 8 else 1)
+                tones = sorted(ch[2:]) + [ch[3] + 12]
+                k = 0
+                tt = 0.0
+                while tt < cs - 1e-6:
+                    m = tones[(k * (3 if z % 2 else 2)) % len(tones)] + (12 if (k // 8) % 2 and z >= 2 else 0)
+                    f = hz(m)
+                    nn = int(sr * min(0.9, step * 3))
+                    tn = np.arange(nn) / sr
+                    pl = np.sin(2 * math.pi * f * tn + 1.8 * np.exp(-tn * 9) * np.sin(2 * math.pi * f * 2 * tn))
+                    pl *= np.exp(-tn * (5.0 if steps == 16 else 3.2)) * np.minimum(1.0, tn / 0.003)
+                    acc = 1.0 if k % 4 == 0 else 0.7
+                    bus.add(pl, start + int(sr * tt), pan=0.45 * math.sin(k * 0.7), gain=g_arp * acc)
+                    tt += step
+                    k += 1
+        # Gongschläge an den Abschnittsgrenzen
+        for sec in range(4):
+            n = int(sr * 7.0)
+            t = np.arange(n) / sr
+            f = hz(c["chords"][0][0]) * (1 + 0.6 * np.exp(-t * 3.0))
+            body = np.sin(2 * math.pi * np.cumsum(f) / sr) * np.exp(-t * 0.65)
+            metal = sum(np.sin(2 * math.pi * fr * t + ph) * np.exp(-t * d)
+                        for fr, ph, d in ((113.0, 0.3, 0.9), (171.4, 1.1, 1.3), (236.2, 2.0, 1.8)))
+            bus.add((body + metal * 0.18) * env_ar(n, sr, 0.004, 1), sec * len(chords) * seg, 0.0, 0.30)
+        # Nebelhorn + Hafenmetall
+        if c["horn"] > 0:
+            for k in range(4):
+                n = int(sr * 4.5)
+                t = np.arange(n) / sr
+                f = hz(c["chords"][0][0] + 12)
+                hs = fft_bp(saw(f * (1 + 0.004 * np.sin(t * 3)), sr) + saw(f * 1.5, sr) * 0.4, 80, 700, sr)
+                hs *= np.clip(t / 0.6, 0, 1) * np.clip((4.5 - t) / 1.5, 0, 1)
+                bus.add(hs, int(sr * (k * cs * 4 + cs * 1.5)), pan=-0.7 if k % 2 else 0.7, gain=c["horn"])
+        if c["clank"] > 0:
+            for k in range(int(N / sr / 3.1)):
+                n = int(sr * 1.6)
+                t = np.arange(n) / sr
+                base = r.uniform(180, 420)
+                cl = sum(np.sin(2 * math.pi * base * q * t) * np.exp(-t * (3 + 2 * q))
+                         for q in (1.0, 2.76, 5.4, 8.9))
+                bus.add(cl, int(r.uniform(0, N)), pan=r.uniform(-0.9, 0.9), gain=c["clank"] * r.uniform(0.4, 1))
+        # Glocken
+        if c["bells"] > 0:
+            for k in range(int(N / sr / 2.4)):
+                st = int(sr * (k * 2.4 + 0.4))
+                ci = (st // seg) % len(chords)
+                m = chords[ci][2 + (k * 3) % (len(chords[ci]) - 2)] + 24
+                n = int(sr * 3.0)
+                t = np.arange(n) / sr
+                fc = hz(m)
+                b = np.sin(2 * math.pi * fc * t + 2.6 * np.exp(-t * 2.2) * np.sin(2 * math.pi * fc * 3.5 * t))
+                bus.add(b * np.exp(-t * 1.6), st, pan=0.6 * (1 if k % 2 else -1), gain=c["bells"])
+        # Solo-Lead: aus Akkordtönen gesetzte Phrasen, in den angegebenen Abschnitten
+        for sec in c["lead"]:
+            notes = []
+            for ci in range(len(chords)):
+                ch = chords[ci]
+                pool = [m + 12 for m in ch[3:]]
+                tt = 0.6 + r.uniform(0, 0.6)
+                while tt < cs - 1.2:
+                    d = r.choice((1.6, 2.2, 3.0, 3.6))
+                    notes.append((ci * cs + tt, hz(int(r.choice(pool))), min(d, cs - tt)))
+                    tt += d + r.choice((0.2, 0.4, 0.8))
+            total = int(sr * (len(chords) * cs + 4))
+            lead_voice(bus, notes, total, sec * len(chords) * seg, 0.10)
+        L, R = bus.verb(5.0, 0.62 if z != 3 else 0.75)
+        return stereo_out(0.8 * L, 0.8 * R)
+
+    def zone_pulse(z):
+        """Rhythmus-Spur, taktgleich zum Zonen-Track (gleiche Länge, gleiche Akkorde)."""
+        c = ZT[z]
+        sr = MSR
+        N = zone_len(c)
+        beat = 60.0 / c["bpm"]
+        cs = c["chord_s"]
+        dry, room = Bus(N), Bus(N)
+        rr = np.random.default_rng(c["seed"] + 100)
+
+        def kick():
+            n = int(sr * 0.5)
+            t = np.arange(n) / sr
+            f = 44 + 70 * np.exp(-t * 28)
+            return np.sin(2 * math.pi * np.cumsum(f) / sr) * np.exp(-t * 7.5) + \
+                fft_lp(rr.standard_normal(n), 2500, sr) * np.exp(-t * 120) * 0.25
+
+        def hat(dec=55.0):
+            n = int(sr * 0.25)
+            t = np.arange(n) / sr
+            x = rr.standard_normal(n)
+            return (x - fft_lp(x, 6500, sr)) * np.exp(-t * dec)
+
+        def snare():
+            n = int(sr * 0.6)
+            t = np.arange(n) / sr
+            return fft_bp(rr.standard_normal(n), 900, 5000, sr) * np.exp(-t * 14) + \
+                np.sin(2 * math.pi * 185 * t) * np.exp(-t * 22) * 0.6
+
+        def clank():
+            n = int(sr * 0.5)
+            t = np.arange(n) / sr
+            return sum(np.sin(2 * math.pi * 310 * q * t) * np.exp(-t * (14 + 6 * q)) for q in (1, 2.76, 5.4))
+
+        K, H, Ho, S, C = kick(), hat(), hat(14.0), snare(), clank()
+        n_beats = int(round(N / sr / beat))
+        bass_cache = {}
+        for b in range(n_beats):
+            t0 = b * beat
+            pos = int(sr * t0)
+            bar_beat = b % 4
+            ci = int(t0 // cs) % len(c["chords"])
+            root = c["chords"][ci][0]
+            # Herzschlag (Vorstadt) / gerade Kick (ab Innenstadt)
+            if z == 1:
+                if bar_beat in (0, 2):
+                    dry.add(K, pos, 0.0, 0.55)
+                    dry.add(K, pos + int(sr * beat * 0.38), 0.0, 0.32)
+                for e in range(2):
+                    dry.add(hat(80.0), pos + int(sr * beat * e / 2), 0.35, 0.10 if e else 0.06)
+                continue
+            dry.add(K, pos, 0.0, 0.62)
+            for e in range(4 if z >= 3 else 2):
+                q = beat * e / (4 if z >= 3 else 2)
+                acc = 0.16 if e % 2 else 0.08
+                dry.add(H, pos + int(sr * q), 0.3 * (1 if e % 2 else -1), acc)
+            if bar_beat == 2 and z == 2:
+                dry.add(Ho, pos + int(sr * beat * 0.5), 0.25, 0.12)
+            if z >= 3 and bar_beat in (1, 3):
+                room.add(S, pos, 0.0, 0.40)
+            if z == 3 and bar_beat in (1, 3):
+                dry.add(C, pos + int(sr * beat * 0.75), -0.5, 0.18)
+            # Bass-Sequenzer (Achtel, ab Hafen Sechzehntel): Grundton, Oktave, Quinte
+            div = 4 if z >= 3 else 2
+            for e in range(div):
+                patt = (0, 12, 7, 12) if div == 4 else (0, 12)
+                m = root + 12 + patt[e % len(patt)]
+                if (m, div) not in bass_cache:
+                    dur = beat / div * 0.95
+                    n = int(sr * dur)
+                    t = np.arange(n) / sr
+                    f = hz(m)
+                    x = saw(np.full(n, f), sr) + saw(np.full(n, f * 1.004), sr)
+                    x = fft_lp(x, 260 + f * 3, sr) * np.exp(-t * 7) * np.minimum(1, t / 0.004)
+                    x[-64:] *= np.linspace(1, 0, 64)
+                    bass_cache[(m, div)] = x
+                acc = 1.0 if e == 0 else 0.72
+                dry.add(bass_cache[(m, div)], pos + int(sr * beat * e / div), 0.0, 0.20 * acc)
+        L1, R1 = dry.verb(1.2, 0.18, (21, 22))
+        L2, R2 = room.verb(3.5, 0.9, (23, 24))
+        return stereo_out(L1 + L2, R1 + R2)
+
     out = {"music": (soundtrack, MSR, True), "patrol": (patrol, SR, True), "thunder": (thunder, SR, True),
            "blackout": (blackout, SR, True), "power_up": (power_up, SR, True)}
     for name, dur, t0, src, span in (
@@ -522,6 +804,9 @@ def _np_sounds():
         for dname, sgn in (("lr", 1.0), ("rl", -1.0)):
             out[f"{name}_{dname}"] = (
                 (lambda dur=dur, t0=t0, src=src, span=span, sgn=sgn: passby(dur, t0, src, span * sgn)), SR, True)
+    for z in ZT:                                  # zuletzt: Zonen-Tracks (werden erst später gebraucht)
+        out[f"music_z{z}"] = ((lambda z=z: zone_music(z)), MSR, True)
+        out[f"pulse_z{z}"] = ((lambda z=z: zone_pulse(z)), MSR, True)
     return out
 
 
@@ -557,15 +842,23 @@ def build(d):
         if not os.path.exists(path):
             _write_np(path, fn(), sr)
     with open(os.path.join(d, "DONE"), "w") as f:
-        f.write("ok\n")
+        f.write(DONE_TAG + "\n")
 
 
 # ====================================================================== Wiedergabe
 
 LOOPS = ("rain", "music")
+# Rhythmus-Spur je Zone: Pegel in Ruhe .. bei voller Spannung (x Musiklautstärke)
+PULSE_LEVEL = {1: (0.22, 0.85), 2: (0.30, 0.9), 3: (0.38, 0.95), 4: (0.42, 1.0)}
+
+
+def _lazy(name):
+    """Zonen-Spuren werden nicht vorab geladen (Speicher), sondern bei Zonenwechsel."""
+    return name.startswith("music_z") or name.startswith("pulse_z")
 VOLUME = {"music": 0.5, "rain": 0.16, "target": 0.25, "ui": 0.4, "shot": 0.55, "spinner_lr": 0.45,
           "spinner_rl": 0.45, "car_lr": 0.38, "car_rl": 0.38, "truck_lr": 0.45, "truck_rl": 0.45,
-          "bike_lr": 0.35, "bike_rl": 0.35, "patrol": 0.45, "thunder": 0.6, "honk": 0.35, "jump": 0.3,
+          "bike_lr": 0.35, "bike_rl": 0.35, "patrol": 0.45, "thunder": 0.6, "honk": 0.55, "bump": 0.45,
+          "jump": 0.3,
           "land": 0.3, "scan": 0.4, "alert": 0.4}
 
 
@@ -610,7 +903,17 @@ class Mixer:
             x = np.stack([np.interp(t, np.arange(len(x)), x[:, c]) for c in range(2)], axis=1).astype(np.float32)
         self.data[name] = np.ascontiguousarray(x)
 
-    def play(self, name, vol, loop=False, now=0.0):
+    def unload(self, name):
+        self.stop(name)
+        self.data.pop(name, None)
+
+    def pos(self, name):
+        for v in self.voices:
+            if v[0] == name:
+                return v[1]
+        return 0
+
+    def play(self, name, vol, loop=False, now=0.0, pos=0):
         if name not in self.data:
             return
         if not loop and now - self._last_start.get(name, -1.0) < 0.03:
@@ -620,7 +923,7 @@ class Mixer:
             one_shots = [v for v in self.voices if not v[3]]
             if one_shots:
                 self.voices.remove(one_shots[0])
-        self.voices.append([name, 0, vol, loop])
+        self.voices.append([name, pos % len(self.data[name]), vol, loop])
 
     def stop(self, name):
         self.voices = [v for v in self.voices if v[0] != name]
@@ -690,6 +993,13 @@ class Audio:
         self.sfx_vol = 1.0       # Nutzer-Lautstärke Effekte (0..1)
         self._t = 0.0
         self.mixer = None
+        # Zonen-Musik: nur die aktuelle Spur liegt im Speicher, Wechsel per Überblendung
+        self._zone = 0
+        self._want = 0
+        self._mus = "music"
+        self._pulse = None
+        self._gain = {"music": 1.0}         # Überblend-Faktor je Musik-Stimme
+        self._tension = 0.0
         if not self.enabled:
             return
         try:
@@ -703,7 +1013,13 @@ class Audio:
             print(f"[audio] Mixer nicht verfügbar ({exc}) - Fallback QSoundEffect (leise: Rolle 'event')")
             self.mixer = None
         self.dir = cache_dir()
-        if not os.path.exists(os.path.join(self.dir, "DONE")):
+        missing = any(not os.path.exists(os.path.join(self.dir, n + ".wav")) for n in BASIC)
+        try:
+            with open(os.path.join(self.dir, "DONE")) as f:
+                done = f.read().strip() == DONE_TAG
+        except OSError:
+            done = False
+        if missing or not done:   # neue Klänge nachbauen
             try:
                 kw = {}
                 if getattr(sys, "frozen", False):     # gepackte .exe: sich selbst aufrufen
@@ -733,7 +1049,7 @@ class Audio:
         try:
             names = sorted(fn[:-4] for fn in os.listdir(self.dir) if fn.endswith(".wav"))
             for name in names:
-                if name in self._loaded:
+                if name in self._loaded or _lazy(name):
                     continue
                 self._loaded.add(name)
                 path = os.path.join(self.dir, name + ".wav")
@@ -743,10 +1059,74 @@ class Audio:
                 else:
                     self._fx[name] = self._qsound(name, path)
                 if name in LOOPS and self._started_loops and not self.muted:
-                    self._start_loop(name)
+                    if self.mixer is not None and name == "music":
+                        self._start_music()
+                    else:
+                        self._start_loop(name)
         except Exception as exc:  # noqa: BLE001
             print(f"[audio] Fehler beim Laden: {exc}")
             self.enabled = False
+        if self._want != self._zone:
+            self.set_zone(self._want)
+
+    # ---------------------------------------------------------------- Zonen-Musik
+    def set_zone(self, z):
+        """Musik der Zone z: Zone 0 = Titelthema, ab 1 eigener Track + Rhythmus-Spur.
+        Fehlt die Datei noch (Erzeugung läuft), bleibt die alte Musik und poll() versucht
+        es später erneut."""
+        self._want = z
+        if self.mixer is None or z == self._zone:
+            return
+        mus = "music" if z == 0 else f"music_z{z}"
+        pulse = None if z == 0 else f"pulse_z{z}"
+        for n in (mus, pulse):
+            if n is not None and not os.path.exists(os.path.join(self.dir, n + ".wav")):
+                return
+        try:
+            for n in (mus, pulse):
+                if n is not None and n not in self.mixer.data:
+                    self.mixer.load(n, os.path.join(self.dir, n + ".wav"))
+        except Exception as exc:  # noqa: BLE001
+            print(f"[audio] Zonen-Musik nicht ladbar: {exc}")
+            self._want = self._zone
+            return
+        self._zone = z
+        self._mus, self._pulse = mus, pulse
+        self._fx[mus] = True
+        self._gain.setdefault(mus, 0.0)
+        if pulse:
+            self._gain.setdefault(pulse, 0.0)
+        if self._started_loops and not self.muted:
+            self._start_music()
+
+    def _start_music(self):
+        """Aktuelle Musik + Rhythmus starten - die Rhythmus-Spur immer taktgleich."""
+        m = self.mixer
+        if m is None or self._mus not in m.data:
+            return
+        if not m.playing(self._mus):
+            m.play(self._mus, 0.0, loop=True)
+        if self._pulse and self._pulse in m.data and not m.playing(self._pulse):
+            m.play(self._pulse, 0.0, loop=True, pos=m.pos(self._mus))
+
+    def _tension_of(self, world, mode):
+        """0..1: wie angespannt die Lage ist (treibt die Rhythmus-Spur)."""
+        if world is None or mode not in ("play", "pause"):
+            return 0.0
+        t = 0.8 * getattr(world, "unrest", 0.0)
+        if getattr(world, "aiming", False):
+            t = max(t, 0.55)
+        if getattr(world, "boss", None) is not None:
+            t = max(t, 0.9)
+        if getattr(world, "blackout_t", 0) > 0:
+            t = max(t, 0.5)
+        run = getattr(world, "run", None)
+        t = max(t, 0.6 * getattr(run, "suspicion", 0.0))
+        for a in getattr(world, "actors", ()):
+            if a.alive and getattr(a, "alert", False) and a.state in ("flee", "attack", "punch", "leap"):
+                t = 1.0
+                break
+        return min(1.0, t)
 
     def _qsound(self, name, path):
         from PyQt6.QtCore import QUrl
@@ -775,6 +1155,13 @@ class Audio:
 
     def loops(self, on=True):
         for name in LOOPS:
+            if self.mixer is not None and name == "music":      # Zonen-Musik (eigene Logik)
+                if on and not self.muted:
+                    self._start_music()
+                else:
+                    for n in list(self._gain):
+                        self.mixer.stop(n)
+                continue
             if name not in self._fx:
                 continue
             if on and not self.muted:
@@ -816,7 +1203,32 @@ class Audio:
         mus = VOLUME["music"] * self.music_vol * self._music_vol
         rain = VOLUME["rain"] * self.sfx_vol
         if self.mixer is not None:
-            self.mixer.set_vol("music", mus)
+            if world is not None:
+                z = getattr(world, "zone_index", 0) if mode != "title" else 0
+                if z != self._want or z != self._zone:
+                    self.set_zone(z)
+            tg = self._tension_of(world, mode)
+            # schnell rein, langsam raus - die Spannung soll nachklingen
+            k = dt * (1.2 if tg > self._tension else 0.18)
+            self._tension += (tg - self._tension) * min(1.0, k)
+            lo, hi = PULSE_LEVEL.get(self._zone, (0.0, 0.0))
+            for n in list(self._gain):
+                if n == self._mus:
+                    goal_g = 1.0
+                elif n == self._pulse:
+                    goal_g = lo + (hi - lo) * self._tension
+                else:
+                    goal_g = 0.0
+                g = self._gain[n]
+                g += max(-dt / 2.5, min(dt / 2.5, goal_g - g))      # 2,5 s Überblendung
+                self._gain[n] = g
+                if g <= 0.0 and goal_g == 0.0 and n not in (self._mus, self._pulse):
+                    del self._gain[n]
+                    self.mixer.unload(n)                 # Speicher frei (bis zu ~33 MB je Spur)
+                    self._fx.pop(n, None)
+                    self._loaded.discard(n)
+                else:
+                    self.mixer.set_vol(n, mus * g)
             self.mixer.set_vol("rain", rain)
             self.mixer.pump(silent=self.muted)
         elif "music" in self._fx:
@@ -833,7 +1245,8 @@ class Audio:
         mus = VOLUME["music"] * self.music_vol * self._music_vol
         rain = VOLUME["rain"] * self.sfx_vol
         if self.mixer is not None:
-            self.mixer.set_vol("music", mus)
+            for n, g in self._gain.items():
+                self.mixer.set_vol(n, mus * g)
             self.mixer.set_vol("rain", rain)
         elif self._fx:
             if "music" in self._fx:
@@ -899,15 +1312,42 @@ class Audio:
                 self.play("honk")
             elif k == "car_hit":
                 self.play("car_hit")
+            elif k == "bump":
+                self.play("bump")
+            elif k == "jam_honk":
+                self.play("honk", VOLUME["honk"] * 0.5)
             elif k == "vehicle":
                 kind, d = ev[1], ev[2]
-                cls = kind if kind in ("truck", "bike") else "car"
-                self.play(f"{cls}_{'lr' if d > 0 else 'rl'}")
+                vol = ev[3] if len(ev) > 3 else 1.0     # leiser bei langsamer/dichter Fahrt
+                # dichter Verkehr: höchstens 4 Vorbeifahrten gleichzeitig anstoßen
+                self._veh_t = [x for x in getattr(self, "_veh_t", []) if self._t - x < 2.5]
+                if len(self._veh_t) >= 4:
+                    continue
+                self._veh_t.append(self._t)
+                if kind == "police":        # Boden-Spinner: Turbinen statt Motor
+                    self.play(f"spinner_{'lr' if d > 0 else 'rl'}", VOLUME["spinner_lr"] * 0.8 * vol)
+                else:
+                    cls = "truck" if kind in ("truck", "bus") else (kind if kind == "bike" else "car")
+                    nm = f"{cls}_{'lr' if d > 0 else 'rl'}"
+                    self.play(nm, VOLUME.get(nm, 0.4) * vol)
             elif k == "spinner":
                 d, s = ev[1], ev[2]
                 self.play(f"spinner_{'lr' if d > 0 else 'rl'}", VOLUME["spinner_lr"] * min(1.0, 0.5 + s * 0.35))
             elif k == "patrol":
                 self.play("patrol")
+            elif k in ("spinner_land", "spinner_lift"):
+                d = ev[1]
+                self.play(f"spinner_{'lr' if d > 0 else 'rl'}", VOLUME["spinner_lr"])
+            elif k == "spinner_touch":
+                self.play("car_hit", VOLUME.get("car_hit", 0.5) * 0.45)
+            elif k == "shout":
+                self.play("shout")
+            elif k == "talk":
+                self.play("talk")
+            elif k == "origami":
+                self.play("bounty")
+            elif k == "greet":
+                self.play("ui")
             elif k == "thunder":
                 self.play("thunder")
             elif k == "blackout":

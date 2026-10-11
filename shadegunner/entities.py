@@ -25,7 +25,7 @@ class Actor:
     vd: float = 0.0
     target_depth: float = 0.5
 
-    # Verhalten: walk | idle | panic | flee | attack | cower | hurt | dead
+    # Verhalten: walk | idle | loiter | panic | flee | attack | cower | duck | freeze | hands | hurt | dead
     #            Spieler: idle | walk | run | aim | shoot | scan | hurt | dead
     state: str = "walk"
     state_t: float = 0.0
@@ -61,3 +61,7 @@ class Actor:
     lit_t: float = 0.0                 # Sekunden im Suchlicht
     bounty: bool = False               # Kopfgeld-Ziel der Zone
     name: str = ""
+    group: int = -1                    # Gruppe, die zusammen herumsteht (-1 = allein)
+    home: tuple = None                 # bevorzugtes Tiefenband (lo, hi), z. B. hinterer Gehweg
+    gx: float = 0.0                    # Gruppenmitte (x), der Blick geht dorthin
+    react_t: float = 0.0               # Reaktionslatenz (Schreck, Alter)

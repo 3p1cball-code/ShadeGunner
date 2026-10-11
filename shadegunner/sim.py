@@ -19,21 +19,23 @@ from .render.sprites import COATS, PLAYER_LOOK, describe, frame_count, random_lo
 DU = config.DEPTH_UNITS
 
 # Zonen-Sequenz von den Außenbezirken bis Tyrell HQ (DESIGN.md §6).
-# density = Passanten pro 100 Welt-Einheiten; camo = Tarntiefe 0..1;
+# density = Passanten pro 100 Welt-Einheiten auf der Straße, sidewalk = Flaneure auf dem
+# hinteren Gehweg, groups = herumstehende Gruppen (2-4 Leute) je 100 u; camo = Tarntiefe 0..1;
 # aggression = Anteil Replikanten, die bei Entdeckung angreifen statt fliehen.
-# traffic = mittlerer Abstand zwischen Fahrzeugen (s); patrol = Abstand der Polizei-
+# traffic = mittlerer Abstand zwischen Fahrzeugen (s) - je dichter, desto langsamer (Kolonne);
+# parked = parkende Fahrzeuge je 1000 u; steam = dampfende Gullis je 1000 u; patrol = Abstand der Polizei-
 # Suchlicht-Patrouillen (s, None = keine); blackout = Chance auf einen Stromausfall.
 ZONES = [
-    dict(name="Außenbezirk", length=2000, density=1.6, replicants=5, quota=3, camo=0.0, aggression=0.0, flee=0.45,
-         traffic=13.0, patrol=None, blackout=0.0),
-    dict(name="Vorstadt",    length=2300, density=2.0, replicants=6, quota=3, camo=0.25, aggression=0.15, flee=0.5,
-         traffic=10.0, patrol=55.0, blackout=0.5),
-    dict(name="Innenstadt",  length=2600, density=2.6, replicants=8, quota=4, camo=0.5, aggression=0.3, flee=0.55,
-         traffic=6.5, patrol=40.0, blackout=0.6),
-    dict(name="Hafen",       length=2400, density=2.2, replicants=8, quota=5, camo=0.7, aggression=0.5, flee=0.6,
-         traffic=9.0, patrol=45.0, blackout=0.8),
-    dict(name="Tyrell",      length=2300, density=2.3, replicants=9, quota=5, camo=0.9, aggression=0.65, flee=0.6,
-         traffic=8.0, patrol=30.0, blackout=0.5),
+    dict(name="Außenbezirk", length=2000, density=1.7, sidewalk=0.8, groups=0.22, replicants=5, quota=3, camo=0.0, aggression=0.0, flee=0.45,
+         traffic=12.0, parked=1.5, steam=1.0, patrol=None, blackout=0.0),
+    dict(name="Vorstadt",    length=2300, density=2.0, sidewalk=1.0, groups=0.30, replicants=6, quota=3, camo=0.25, aggression=0.15, flee=0.5,
+         traffic=5.0, parked=3.0, steam=1.6, patrol=55.0, blackout=0.5),
+    dict(name="Innenstadt",  length=2600, density=2.5, sidewalk=1.4, groups=0.38, replicants=8, quota=4, camo=0.5, aggression=0.3, flee=0.55,
+         traffic=2.4, parked=5.5, steam=2.6, patrol=40.0, blackout=0.6),
+    dict(name="Hafen",       length=2400, density=2.1, sidewalk=1.1, groups=0.32, replicants=8, quota=5, camo=0.7, aggression=0.5, flee=0.6,
+         traffic=2.1, parked=6.5, steam=3.0, patrol=45.0, blackout=0.8),
+    dict(name="Tyrell",      length=2300, density=2.3, sidewalk=1.2, groups=0.26, replicants=9, quota=5, camo=0.9, aggression=0.65, flee=0.6,
+         traffic=1.8, parked=7.0, steam=3.2, patrol=30.0, blackout=0.5),
 ]
 
 # Kopfgeld-Replikanten (Nexus-6 aus der Akte) je Zone
@@ -41,16 +43,28 @@ BOUNTY_NAMES = ["HODGE", "LEON", "ZHORA", "PRIS", "ROY"]
 
 # Verkehr: Art -> (Länge u, Höhe u, Tempo u/s)
 VEHICLES = {
-    "car": (87.0, 25.5, 170.0), "taxi": (84.0, 25.5, 185.0), "truck": (138.0, 45.0, 135.0),
-    "bike": (45.0, 22.5, 230.0), "police": (90.0, 27.0, 215.0), "limo": (126.0, 24.0, 160.0),
+    "car": (87.0, 29.0, 170.0), "taxi": (84.0, 40.0, 185.0), "truck": (138.0, 48.0, 135.0),
+    "bike": (45.0, 36.0, 230.0), "police": (90.0, 31.0, 215.0), "limo": (126.0, 26.5, 160.0),
+    "bus": (180.0, 56.0, 120.0),
 }
+ZONE_PARKED = [
+    ["truck", "car", "car"],
+    ["car", "car", "taxi", "bike", "car"],
+    ["taxi", "car", "car", "bike", "taxi", "bus"],
+    ["truck", "truck", "car", "car", "bike"],
+    ["limo", "car", "limo", "police"],
+]
 ZONE_TRAFFIC = [
     ["truck", "car", "car", "bike"],
-    ["car", "car", "taxi", "bike", "police"],
-    ["taxi", "taxi", "car", "bike", "police", "car"],
-    ["truck", "truck", "car", "bike"],
+    ["car", "car", "taxi", "bike", "police", "bus"],
+    ["taxi", "taxi", "car", "bike", "police", "car", "bus"],
+    ["truck", "truck", "car", "bike", "bus"],
     ["limo", "police", "car", "limo"],
 ]
+
+# Gaffs Origami: eine Figur pro Zone, versteckt neben der Fahrbahn
+ORIGAMI = [("huhn", "HUHN"), ("mann", "STREICHHOLZMANN"), ("schaf", "SCHAF"), ("kranich", "KRANICH"),
+           ("einhorn", "EINHORN")]
 
 # Upgrades zwischen den Zonen (eins aus drei). Nie ein Freifahrtschein (§7).
 UPGRADES = [
@@ -64,14 +78,23 @@ UPGRADES = [
     ("kalt", "KALTES BLUT", "FEHLER KOSTEN 35% WENIGER VERDACHT"),
     ("peil", "PEILSENDER", "FLÜCHTENDE SIND 30% LANGSAMER"),
     ("instinkt", "INSTINKT", "AUGENREFLEXE DOPPELT SO HÄUFIG"),
+    ("megafon", "MEGAFON", "RUF ALLE 6 S STATT 12, 35% WEITER"),
 ]
+
+# Ruf (V): Sätze über dem Spieler
+SHOUT_LINES = ["LAPD! ALLE RUNTER!", "POLIZEI! KÖPFE RUNTER!", "BLADE RUNNER! IN DECKUNG!", "RUNTER! SOFORT!"]
+TALK_LINES = ["SIE DA! STEHEN BLEIBEN!", "HALT! POLIZEI!", "HEY! SIE! HÄNDE HOCH!", "KEINE BEWEGUNG!"]
+TALK_ANSWERS = ["ICH HAB NICHTS GETAN!", "WAS WOLLEN SIE?", "NICHT SCHIESSEN!", "ICH WOHN HIER!",
+                "BIN NUR AUF DEM HEIMWEG", "HAB MEINEN AUSWEIS NICHT DABEI", "OKAY, OKAY!"]
 
 
 class Run:
     """Zustand, der über Zonen hinweg erhalten bleibt."""
 
-    def __init__(self, seed=0):
+    def __init__(self, seed=0, difficulty="normal"):
         self.seed = seed
+        self.difficulty = difficulty if difficulty in config.DIFFICULTY else "normal"
+        self.density = config.DIFFICULTY[self.difficulty]["density"]
         self.score = 0
         self.max_hp = config.PLAYER_HP
         self.hp = self.max_hp
@@ -79,8 +102,10 @@ class Run:
         self.upgrades = []
         self.zone_index = 0
         self.totals = dict(reps=0, civs=0, escaped=0, scans=0, shots=0, time=0.0)
+        self.origami = []           # gefundene Origami-Figuren (Gaff war hier)
         self.mods = dict(scan_max=config.SCAN_CHARGES, scan_time=1.0, deep=False, observe=1.0,
-                         speed=1.0, aim_min=config.AIM_MIN, susp=1.0, flee=1.0, glint=1.0)
+                         speed=1.0, aim_min=config.AIM_MIN, susp=1.0, flee=1.0, glint=1.0,
+                         shout_cd=1.0, shout_r=1.0)
 
     def apply(self, key):
         m = self.mods
@@ -106,10 +131,21 @@ class Run:
             m["flee"] *= 0.7
         elif key == "instinkt":
             m["glint"] *= 2.0
+        elif key == "megafon":
+            m["shout_cd"] *= 0.5
+            m["shout_r"] *= 1.35
 
     def offer(self, rng, n=3):
-        pool = [u for u in UPGRADES if not (u[0] in self.upgrades and u[0] in ("tief", "hand"))]
+        pool = [u for u in UPGRADES if not (u[0] in self.upgrades and u[0] in ("tief", "hand", "megafon"))]
         return rng.sample(pool, min(n, len(pool)))
+
+
+class _Spot:
+    """Floater-Anker ohne Figur (z. B. der Koch am Nudelstand)."""
+    __slots__ = ("uid", "x", "depth")
+
+    def __init__(self, uid, x, depth):
+        self.uid, self.x, self.depth = uid, x, depth
 
 
 class World:
@@ -120,7 +156,9 @@ class World:
         self.zone_index = self.run.zone_index
         self.rng = random.Random(seed * 31 + self.zone_index * 7 + 1)
         self.seed = seed
-        self.zone = ZONES[self.zone_index]
+        self.zone = dict(ZONES[self.zone_index])
+        for k in ("density", "sidewalk", "groups"):
+            self.zone[k] = self.zone.get(k, 0.0) * getattr(self.run, "density", 1.0)
         self.length = float(self.zone["length"])
         self.camo = self.zone["camo"]
         self.time = 0.0
@@ -141,8 +179,23 @@ class World:
                       for x in procgen.ramen_positions(self.length, seed, self.zone_index)]
         self.obstacles = procgen.obstacles(self.rng, self.zone_index, self.length,
                                            [r["x"] for r in self.ramen])
+        # Parkende Fahrzeuge und Gullis: eigener Zufallsstrom (ändert sonst nichts)
+        rng2 = random.Random(seed * 613 + self.zone_index * 17 + 9)
+        dims = {k: VEHICLES[k] for k in VEHICLES}
+        self.obstacles += procgen.parked(rng2, self.zone, ZONE_PARKED[self.zone_index % len(ZONE_PARKED)],
+                                         dims, self.length, [r["x"] for r in self.ramen], self.obstacles)
+        self.manholes, stacks = procgen.manholes(rng2, self.zone, self.length,
+                                                 [r["x"] for r in self.ramen], self.obstacles)
+        self.obstacles += stacks
+        self._unstick(acts)
+        self.origami = self._place_origami()
         self.vehicles = []
         self.traffic_cd = self.rng.uniform(3.0, 7.0)
+        self.car_escape = 0.35 if self.zone_index <= 1 else 0.6   # Chance, in letzter Sekunde nicht erwischt zu werden
+        # Je dichter der Verkehr, desto langsamer fließt er (Kolonne statt Raserei)
+        self.traffic_gap = (self.zone.get("traffic") or 0.0) / max(0.3, getattr(self.run, "density", 1.0))
+        self.traffic_slow = (min(1.0, max(0.35, (self.traffic_gap / config.TRAFFIC_REF) ** 0.55))
+                             if self.traffic_gap else 1.0)
         self.patrol = None
         self.patrol_cd = self.rng.uniform(16.0, 28.0) if self.zone.get("patrol") else None
         self.watched = False
@@ -155,6 +208,7 @@ class World:
         self.blackout_t = 0.0
         self.blackout_at = self.rng.uniform(35.0, 85.0) if self.rng.random() < self.zone.get("blackout", 0) else None
         self._veh_uid = 0
+        self._prefill_traffic()
 
         m = self.run.mods
         self.scan_max = m["scan_max"]
@@ -164,7 +218,8 @@ class World:
         self.combo = 1
         self.state = "playing"          # playing | zone_clear | failed
         self.fail_reason = ""
-        self.stats = dict(reps=0, civs=0, escaped=0, scans=0, shots=0, score=0, time=0.0, bounty=False)
+        self.stats = dict(reps=0, civs=0, escaped=0, scans=0, shots=0, score=0, time=0.0, bounty=False,
+                          origami=False)
 
         self.target = None
         self.manual_target = False
@@ -180,6 +235,13 @@ class World:
         self.log = []
         self._gate_msg_cd = 0.0
         self._prev_aim = False
+        self.shout_cd = 0.0
+        self.talk_cd = 0.0
+        self.shout_hold = -1.0          # >= 0: V wird gehalten (Sekunden)
+        self.reactions = []             # [Restzeit, Aktor, Art] - verzögerte Reaktionen
+        self.wave = None                # sichtbare Rufwelle
+        self.unrest = 0.0               # Unruhe der Straße 0..1 (steigt mit jedem Ruf)
+        self.shout_count = None
 
     # ------------------------------------------------------------------ Kopfgeld
     def _make_bounty(self, acts):
@@ -271,6 +333,7 @@ class World:
         self._update_dead(dt)
         if self.state != "playing":
             self._update_traffic(dt, spawn=False)
+            self._update_steam(dt)
             self._update_patrol(dt)
             self._update_npcs(dt, frozen=True)
             self._physics_z(self.player, dt)
@@ -279,6 +342,9 @@ class World:
         self.stats["time"] += dt
         self._gate_msg_cd = max(0.0, self._gate_msg_cd - dt)
         self.shot_cd = max(0.0, self.shot_cd - dt)
+        self.shout_cd = max(0.0, self.shout_cd - dt)
+        self.talk_cd = max(0.0, self.talk_cd - dt)
+        self._update_reactions(dt)
         if self.scan_charges < self.scan_max:
             self.scan_charges = min(self.scan_max, self.scan_charges + dt / config.SCAN_RECHARGE_S)
         self._update_blackout(dt)
@@ -286,10 +352,12 @@ class World:
         self._update_player(dt, inp)
         self._update_target(inp)
         self._update_traffic(dt)
+        self._update_steam(dt)
         self._update_patrol(dt)
         self._update_npcs(dt)
         self._observe(dt)
         self._update_ramen(dt)
+        self._update_origami()
         self._update_boss(dt)
 
         # Kamera: führt in Blickrichtung
@@ -329,6 +397,10 @@ class World:
             p.vz = config.JUMP_V
             p.z = 0.01
             self.events.append(("jump", p.uid))
+
+        self._shout_input(dt, bool(inp.get("shout")))
+        if inp.get("shout_crowd"):          # Skript/Bot: sofort voller Ruf
+            self.shout_crowd()
 
         # Scan-Kanal
         if self.scan_t >= 0.0:
@@ -504,7 +576,7 @@ class World:
         if target is not None and math.sqrt(L2) > config.SHOOT_RANGE:
             best, best_s = None, config.SHOOT_RANGE / math.sqrt(L2)
         for a in self.living():
-            if a is target:
+            if a is target or a.state == "duck":      # Geduckte: die Kugel geht drüber
                 continue
             s = ((a.x - sx) * vx + (a.depth - sd) * DU * vy) / L2
             if 0.02 < s < best_s:
@@ -515,6 +587,142 @@ class World:
         return best
 
     # ------------------------------------------------------------------ Aktionen
+    def shout_ready(self):
+        return self.shout_cd <= 0.0
+
+    def _shout_input(self, dt, held):
+        """V tippen = Ansprache an das Ziel; V halten = Ruf an die Menge (Radius wächst
+        mit der Haltezeit), ausgelöst beim Loslassen."""
+        if held and self.shout_hold < 0.0:
+            self.shout_hold = 0.0
+        if held:
+            self.shout_hold += dt
+            return
+        if self.shout_hold < 0.0:
+            return
+        h, self.shout_hold = self.shout_hold, -1.0
+        if h < config.SHOUT_TAP:
+            self.address()
+        else:
+            self.shout_crowd(self.shout_radius(h))
+
+    def shout_radius(self, hold=None):
+        h = self.shout_hold if hold is None else hold
+        k = min(1.0, max(0.0, (h - config.SHOUT_TAP) / config.SHOUT_CHARGE))
+        r0, r1 = config.SHOUT_RADIUS
+        return (r0 + (r1 - r0) * k) * self.run.mods["shout_r"]
+
+    def address(self):
+        """„Sie da! Stehen bleiben!“ - spricht nur das gewählte Ziel an. Menschen drehen
+        sich um und heben die Hände; wer den REIZ-Tell hat, reagiert nicht, sondern
+        starrt. Gescannte/anvisierte Replikanten können abhauen."""
+        if self.state != "playing":
+            return "no"
+        t = self.target
+        p = self.player
+        if self.talk_cd > 0.0:
+            self.events.append(("no_charge",))
+            return "cooldown"
+        if t is None or not t.alive or self.dist(p, t) > config.TALK_RANGE:
+            self.events.append(("no_target",))
+            self._say("Niemand in Rufweite angesprochen.")
+            return "no_target"
+        self.talk_cd = config.TALK_CD
+        self.floater(self.rng.choice(TALK_LINES), p, (255, 255, 255), 1.4)
+        self.events.append(("talk", t.uid))
+        self.reactions.append([t.react_t + 0.1, t, "talk"])
+        self.unrest = min(1.0, self.unrest + 0.03)
+        return "ok"
+
+    def shout_crowd(self, R=None):
+        """„LAPD! Alle runter!“ - Ruf als Welle: jeder reagiert, wenn sie ihn erreicht,
+        plus eigener Schrecksekunde. REIZ-Tell = bleibt reglos stehen (Tell aufgedeckt,
+        ehrlich kalibriert); die anderen gehen in Deckung (Kugel geht drüber) oder
+        rennen. Jeder Ruf macht die Straße unruhiger: mehr Läufer, nervösere Replikanten."""
+        if self.state != "playing":
+            return "no"
+        if self.shout_cd > 0.0:
+            self.events.append(("no_charge",))
+            return "cooldown"
+        p = self.player
+        R = R if R is not None else self.shout_radius(config.SHOUT_TAP + config.SHOUT_CHARGE)
+        self.shout_cd = config.SHOUT_CD * self.run.mods["shout_cd"]
+        self.wave = dict(x=p.x, depth=p.depth, r=0.0, R=R, t=0.0)
+        self.events.append(("shout", p.x, R))
+        self.floater(self.rng.choice(SHOUT_LINES), p, (255, 255, 255), 1.5)
+        for a in self.living():
+            if a.boss or a.state in ("flee", "attack", "punch", "leap"):
+                continue
+            d = self.dist(p, a)
+            if d <= R:
+                self.reactions.append([d / config.SHOUT_SPEED + a.react_t, a, "crowd"])
+        self.shout_n = 0
+        self.shout_count = dict(duck=0, freeze=0, run=0)
+        self.unrest = min(1.0, self.unrest + config.UNREST_PER_SHOUT)
+        return "ok"
+
+    def _update_reactions(self, dt):
+        if self.wave is not None:
+            w = self.wave
+            w["t"] += dt
+            w["r"] = w["t"] * config.SHOUT_SPEED
+            if w["r"] > w["R"] * 1.15:
+                self.wave = None
+        self.unrest = max(0.0, self.unrest - dt * config.UNREST_DECAY)
+        if not self.reactions:
+            return
+        due, keep = [], []
+        for r in self.reactions:
+            r[0] -= dt
+            (due if r[0] <= 0.0 else keep).append(r)
+        self.reactions = keep
+        for _t, a, kind in due:
+            if a.alive and not a.escaped:
+                self._react(a, kind)
+        if not self.reactions and self.shout_count:
+            c = self.shout_count
+            self._say(f"Ruf: {c['duck']} in Deckung, {c['freeze']} reglos, {c['run']} rennen.")
+            self.shout_count = None
+
+    def _react(self, a, kind):
+        rng = self.rng
+        p = self.player
+        u = self.unrest
+        c = self.shout_count if (kind == "crowd" and self.shout_count) else dict(duck=0, freeze=0, run=0)
+        if a.state in ("flee", "attack", "punch", "leap") or a.z > 0.0:
+            return
+        # Ertappt? Gescannte/anvisierte Replikanten und ein Teil der übrigen hauen ab -
+        # je unruhiger die Straße, desto eher.
+        if a.is_replicant and not a.alert:
+            p_alert = self.zone["flee"] * (config.SHOUT_ALERT if kind == "crowd" else config.TALK_ALERT) * (1 + 1.5 * u)
+            if a.scanned or a.aimed_t > 0.5 or rng.random() < p_alert:
+                self._alert(a)
+                c["run"] += 1
+                return
+        new = "stimulus" not in a.revealed
+        a.revealed.add("stimulus")
+        dur = rng.uniform(*config.SHOUT_DUCK) * (1.0 - 0.35 * u)
+        a.facing = 1 if p.x >= a.x else -1
+        if a.tells.get("stimulus"):
+            a.state, a.timer, a.vx = "freeze", dur, 0.0        # starrt den Rufer an
+            if new and (kind == "talk" or a is self.target or self.dist(p, a) < config.OBSERVE_RANGE):
+                self.floater("REGLOS", a, (255, 138, 44), 1.8)
+                if a is self.target:
+                    self.events.append(("tell", a.uid, "stimulus"))
+            c["freeze"] += 1
+        elif kind == "talk":
+            a.state, a.timer, a.vx = "hands", rng.uniform(2.2, 3.2), 0.0
+            if not a.is_replicant or rng.random() < 0.8:
+                self.floater(rng.choice(TALK_ANSWERS), a, (162, 168, 180), 1.6)
+            if new and a is self.target:
+                self.floater("REIZ: NORMAL", a, (162, 168, 180), 1.4)
+        elif not a.is_replicant and rng.random() < config.SHOUT_SCATTER + 0.5 * u:
+            self._panic_one(a, p.x)                               # rennt lieber weg
+            c["run"] += 1
+        else:
+            a.state, a.timer, a.vx = "duck", dur, 0.0
+            c["duck"] += 1
+
     def scan(self):
         """Startet einen Scan auf das aktuelle Ziel. Rückgabe (status, aktor)."""
         if self.state != "playing":
@@ -721,8 +929,23 @@ class World:
                 a.vz = 0.0
                 self.events.append(("land", a.uid))
 
+    _CELL = 64.0
+
+    def _obs_near(self, x):
+        """Hindernisse in der Nähe von x (Raster nach x; neu gebaut, wenn sich die Liste ändert)."""
+        obs = self.obstacles
+        key = (id(obs), len(obs))
+        if getattr(self, "_grid_key", None) != key:
+            g = {}
+            for o in obs:
+                pad = o["w"] + 40.0                      # Reichweite r/look der Abfragen
+                for c in range(int((o["x"] - pad) // self._CELL), int((o["x"] + pad) // self._CELL) + 1):
+                    g.setdefault(c, []).append(o)
+            self._grid, self._grid_key = g, key
+        return self._grid.get(int(x // self._CELL), ())
+
     def blocked(self, x, d, z, r=4.0):
-        for o in self.obstacles:
+        for o in self._obs_near(x):
             if abs(x - o["x"]) < o["w"] + r and abs(d - o["d"]) < o["dd"] + 0.02 and z < o["h"]:
                 return True
         return False
@@ -731,29 +954,110 @@ class World:
         if a.vx == 0.0:
             return None
         s = 1 if a.vx > 0 else -1
-        for o in self.obstacles:
+        for o in self._obs_near(a.x):
             ahead = (o["x"] - a.x) * s
             if -o["w"] < ahead < o["w"] + look and abs(a.depth - o["d"]) < o["dd"] + 0.035:
                 return o
         return None
 
     # ------------------------------------------------------------------ Verkehr
+    def _unstick(self, acts):
+        """Wer beim Start in einem Hindernis steht (parkendes Auto ...), tritt daneben."""
+        for a in acts:
+            for o in self.obstacles:
+                if abs(a.x - o["x"]) < o["w"] + 3 and abs(a.depth - o["d"]) < o["dd"] + 0.025:
+                    up, dn = o["d"] - o["dd"] - 0.03, o["d"] + o["dd"] + 0.03
+                    a.depth = up if up > config.NPC_DEPTH_MIN + 0.005 and (a.depth < o["d"] or dn > 0.98) else dn
+                    a.target_depth = a.depth
+                    break
+
+    def _new_vehicle(self, lane, dr, x=None):
+        rng = self.rng
+        kind = rng.choice(ZONE_TRAFFIC[self.zone_index % len(ZONE_TRAFFIC)])
+        L, h, sp = VEHICLES[kind]
+        sp *= rng.uniform(0.9, 1.15) * self.traffic_slow
+        if x is None:
+            x = self.camera_x - dr * (max(sp, 120.0) * 0.8 + 300.0)
+        for v in self.vehicles:                               # Einfahrt frei?
+            if v["depth"] == lane and abs(v["x"] - x) < (v["L"] + L) * 0.5 + 30.0:
+                return None
+        self._veh_uid += 1
+        v = dict(x=x, depth=lane, dir=dr, speed=sp, vmax=sp, kind=kind, L=L, h=h, seed=rng.randint(0, 9999),
+                 honk=False, snd=False, slow_t=0.0, honk_cd=0.0,
+                 react=rng.uniform(0.25, 0.6) * (1.6 if self.zone_index <= 1 else 0.8),
+                 uid=-1000 - self._veh_uid)
+        self.vehicles.append(v)
+        return v
+
+    def _prefill_traffic(self):
+        """Dichter Verkehr ist schon da, wenn man ankommt (statt erst hereinzufahren)."""
+        if not self.traffic_gap or self.traffic_slow > 0.6:
+            return
+        for lane, dr in config.LANES:
+            x = self.camera_x - dr * 600.0
+            while (x - self.camera_x) * dr < 600.0:
+                v = self._new_vehicle(lane, dr, x)
+                L = v["L"] if v else 90.0
+                if v is not None:
+                    v["snd"] = abs(x - self.camera_x) < 250        # schon vorbei / zu nah: kein Anfahrtsgeräusch
+                x += dr * (L + self.rng.uniform(1.0, 2.2) * self.traffic_gap * 60.0 * self.traffic_slow)
+
     def _update_traffic(self, dt, spawn=True):
         rng = self.rng
         p = self.player
-        if spawn and self.zone.get("traffic"):
+        if spawn and self.traffic_gap:
             self.traffic_cd -= dt
             if self.traffic_cd <= 0:
-                self.traffic_cd = rng.uniform(0.55, 1.45) * self.zone["traffic"]
                 lane, dr = rng.choice(config.LANES)
-                kind = rng.choice(ZONE_TRAFFIC[self.zone_index % len(ZONE_TRAFFIC)])
-                L, h, sp = VEHICLES[kind]
-                sp *= rng.uniform(0.9, 1.15)
-                self._veh_uid += 1
-                x = self.camera_x - dr * (sp * 0.8 + 300.0)
-                self.vehicles.append(dict(x=x, depth=lane, dir=dr, speed=sp, kind=kind, L=L, h=h,
-                                          seed=rng.randint(0, 9999), honk=False, uid=-1000 - self._veh_uid))
-                self.events.append(("vehicle", kind, dr))
+                if self._new_vehicle(lane, dr) is None:
+                    self.traffic_cd = 0.4                       # Einfahrt zu, gleich nochmal
+                else:
+                    self.traffic_cd = rng.uniform(0.55, 1.45) * self.traffic_gap
+        # Kolonne: wer aufläuft, bremst auf das Tempo des Vordermanns
+        for lane, dr in config.LANES:
+            q = sorted((v for v in self.vehicles if v["depth"] == lane), key=lambda v: -v["x"] * v["dir"])
+            for i, v in enumerate(q):
+                vmax = v.get("vmax", v["speed"])
+                goal = vmax
+                v["honk_cd"] = max(0.0, v.get("honk_cd", 0.0) - dt)
+                # Spieler steht in der Spur: bremsen statt umfahren (früh = wenig Zeit)
+                if p.alive and abs(p.depth - lane) < config.LANE_HALF + 0.03:
+                    ahead = (p.x - v["x"]) * v["dir"]
+                    if 0.0 < ahead < vmax * 3.0 + v["L"]:
+                        need = ahead - (v["L"] * 0.5 + 5.0) - v["speed"] * v.get("react", 0.35)
+                        goal = min(goal, math.sqrt(max(0.0, 2.0 * config.CAR_BRAKE * max(0.0, need))))
+                # Stop-and-go: Taxi lädt ein, jemand sucht einen Parkplatz ...
+                if v.get("halt", 0.0) > 0.0:
+                    v["halt"] -= dt
+                    goal = 0.0
+                elif self.traffic_slow < 0.6 and vmax > 0 and abs(v["x"] - self.camera_x) < 600 \
+                        and rng.random() < dt * (0.05 if v["kind"] == "taxi" else 0.012):
+                    v["halt"] = rng.uniform(1.5, 4.5)
+                if i > 0:
+                    ld = q[i - 1]
+                    gap = (ld["x"] - v["x"]) * v["dir"] - (ld["L"] + v["L"]) * 0.5
+                    safe = config.TRAFFIC_GAP + vmax * 0.9
+                    if gap < safe:
+                        goal = min(vmax, max(0.0, ld["speed"] + (gap - safe) * 1.6))
+                    if gap < 3.0:
+                        v["speed"] = min(v["speed"], ld["speed"])
+                acc = 70.0 if goal > v["speed"] else 240.0
+                v["speed"] += max(-acc * dt, min(acc * dt, goal - v["speed"]))
+                # Stau: wer lange steckt, hupt (nur im Bild)
+                if vmax > 0 and v["speed"] < vmax * 0.4:
+                    v["slow_t"] = v.get("slow_t", 0.0) + dt
+                    if v["slow_t"] > 1.5 and rng.random() < dt * 0.6 and abs(v["x"] - self.camera_x) < 330:
+                        self.events.append(("jam_honk", v["kind"], v["x"] - self.camera_x))
+                        v["slow_t"] = 0.0
+                else:
+                    v["slow_t"] = 0.0
+        near_lane = {}
+        if self.vehicles:
+            for lane, _dr in config.LANES:
+                near_lane[lane] = [a for a in self.actors if not a.player and a.alive and not a.escaped
+                                   and abs(a.depth - lane) < config.LANE_HALF + 0.045]
+        n_near = max(1, sum(1 for w in self.vehicles if abs(w["x"] - self.camera_x) < 420))
+        density_k = min(1.0, 3.0 / n_near)             # viel Verkehr -> leiser
         keep = []
         for v in self.vehicles:
             v["x"] += v["dir"] * v["speed"] * dt
@@ -761,24 +1065,39 @@ class World:
                 continue
             keep.append(v)
             lane = v["depth"]
+            # Anfahrtsgeräusch, wenn es die Kamera in ~2,5 s erreicht
+            if not v.get("snd", True) and 0 < (self.camera_x - v["x"]) * v["dir"] < max(v["speed"], 60.0) * 2.5:
+                v["snd"] = True
+                vs = min(1.0, max(0.15, v["speed"] / 170.0))          # langsam -> leise
+                vol = max(0.18, min(1.0, (0.20 + 0.80 * vs) * density_k))
+                self.events.append(("vehicle", v["kind"], v["dir"], round(vol, 3)))
             # Spieler: Hupen, Treffer
             if p.alive:
                 in_lane = abs(p.depth - lane) < config.LANE_HALF + 0.02
                 ahead = (p.x - v["x"]) * v["dir"]
-                if in_lane and 0 < ahead < v["speed"] * 1.3 + v["L"] and not v["honk"]:
-                    v["honk"] = True
+                # anhupe, wenn ich in der Spur stehe (auch seitlich / halb davor)
+                if (abs(p.depth - lane) < config.LANE_HALF + 0.035 and v["speed"] > 12
+                        and -v["L"] < ahead < max(v["speed"], 45.0) * 1.5 + v["L"] and v["honk_cd"] <= 0.0):
+                    v["honk_cd"] = 1.5
                     self.events.append(("honk", v["kind"]))
                 if in_lane and abs(p.x - v["x"]) < v["L"] * 0.5 + 3 and p.z < v["h"] * 0.75:
-                    if self.hurt_player(v, knock=60.0, text="ANGEFAHREN! -1"):
-                        p.depth = lane + (config.LANE_HALF + 0.05) * (1 if p.depth >= lane else -1)
-                        p.depth = min(config.DEPTH_MAX, max(config.DEPTH_MIN, p.depth))
-                        self.events.append(("car_hit",))
+                    if ahead > 0.0 and v["speed"] > config.CAR_DANGER_SPEED:
+                        # Chance, dass der Fahrer in letzter Sekunde noch bremst (früh seltener)
+                        if self.rng.random() < self.car_escape:
+                            v["speed"] = min(v["speed"], 25.0)
+                            self.events.append(("honk", v["kind"]))
+                            self._car_bump(v, lane)
+                        elif self.hurt_player(v, knock=60.0, text="ANGEFAHREN! -1"):
+                            self._push_out_of_lane(lane)
+                            self.events.append(("car_hit",))
+                    else:
+                        self._car_bump(v, lane)
             # Passanten weichen aus
-            for a in self.actors:
-                if a.player or not a.alive or a.escaped:
-                    continue
+            for a in near_lane.get(lane, ()):
                 rel = (a.x - v["x"]) * v["dir"]
-                if -v["L"] < rel < v["speed"] * 2.3 and abs(a.depth - lane) < config.LANE_HALF + 0.045:
+                if -v["L"] < rel < max(v["speed"], 30.0) * 2.3 and abs(a.depth - lane) < config.LANE_HALF + 0.045:
+                    if a.state in ("duck", "freeze", "hands", "loiter"):
+                        a.state, a.timer = "panic", 1.5
                     if a.dodge_t <= 0.0:
                         side = 1 if a.depth >= lane else -1
                         td = lane + side * (config.LANE_HALF + 0.07)
@@ -787,6 +1106,49 @@ class World:
                         a.target_depth = min(0.98, max(config.DEPTH_MIN + 0.01, td))
                     a.dodge_t = 0.8
         self.vehicles = keep
+
+    def _push_out_of_lane(self, lane):
+        p = self.player
+        side = 1 if p.depth >= lane else -1
+        p.depth = min(config.DEPTH_MAX, max(config.DEPTH_MIN, lane + side * (config.LANE_HALF + 0.06)))
+
+    def _car_bump(self, v, lane):
+        """Seitlich/stehend gerammt: kurzer Stun, kein Herz."""
+        p = self.player
+        if p.invuln > 0 or self.state != "playing":
+            return
+        p.invuln = config.CAR_BUMP_INVULN
+        p.flash_t = 0.2
+        p.state, p.timer = "hurt", 0.3
+        p.knock = 55.0 if p.x >= v["x"] else -55.0
+        self._push_out_of_lane(lane)
+        self.scan_t, self.scan_target, self.aiming = -1.0, None, False
+        self.floater("REMPLER", p, (255, 182, 72), 1.1)
+        self.events.append(("bump",))
+
+    # ------------------------------------------------------------------ Dampf
+    def steam_at(self, x, d):
+        """0..1: wie dicht der Dampf an dieser Stelle ist (Gullis / Schlote)."""
+        best = 0.0
+        for m in self.manholes:
+            dx = x - (m["x"] + m["drift"])
+            if abs(dx) < 30 and abs(d - m["d"]) < 0.07:
+                k = (1.0 - abs(dx) / 30.0) * (1.0 - abs(d - m["d"]) / 0.07)
+                best = max(best, m["s"] * k)
+        return min(1.0, best * 1.6)
+
+    def _update_steam(self, dt):
+        for m in self.manholes:
+            m["t"] += dt
+            t = m["t"]
+            base = m["base"] * (0.75 + 0.25 * math.sin(t * 0.7 + m["ph"]))
+            if m["burst"] <= 0.0 and self.rng.random() < dt / m["every"]:
+                m["burst"] = 3.0                                 # Schwall
+            if m["burst"] > 0.0:
+                m["burst"] -= dt
+                base = max(base, min(1.0, m["burst"] / 1.2) * 1.0)
+            m["s"] = base
+            m["drift"] = 10.0 * math.sin(t * 0.13 + m["ph"])
 
     # ------------------------------------------------------------------ Polizei-Suchlicht
     def _update_patrol(self, dt):
@@ -799,8 +1161,12 @@ class World:
                 if self.patrol_cd <= 0:
                     self.patrol_cd = rng.uniform(0.8, 1.2) * (self.zone.get("patrol") or 60.0)
                     dr = rng.choice((-1, 1))
-                    self.patrol = dict(x=self.camera_x - dr * 330.0, dir=dr, t=0.0, life=rng.uniform(18.0, 25.0),
-                                       ph=rng.random() * 6.28, on=0.0, bx=0.0, bd=0.5, leaving=False)
+                    land = rng.random() < config.SPINNER_LAND_CHANCE
+                    self.patrol = dict(x=self.camera_x - dr * 330.0, dir=dr, t=0.0,
+                                       life=rng.uniform(18.0, 25.0) if not land else 90.0,
+                                       ph=rng.random() * 6.28, on=0.0, bx=0.0, bd=0.5, leaving=False,
+                                       mode="land" if land else "fly", phase="fly", alt=1.0, face=dr,
+                                       obs=None, land_t=0.0)
                     self.events.append(("patrol",))
                     self._say("Polizei-Spinner mit Suchlicht über der Straße.")
             self.watched = False
@@ -809,22 +1175,33 @@ class World:
             return
         P["t"] += dt
         t = P["t"]
-        if t > P["life"] or self.state != "playing":
-            P["leaving"] = True
+        if (t > P["life"] or self.state != "playing") and not P["leaving"]:
+            if P["alt"] < 1.0:
+                if P["phase"] != "lift":
+                    self._spinner_liftoff(P)
+            else:
+                P["leaving"] = True
         if P["leaving"]:
             P["x"] += P["dir"] * 140.0 * dt
             P["on"] = max(0.0, P["on"] - dt * 1.5)
             if abs(P["x"] - self.camera_x) > 420.0:
                 self.patrol = None
                 return
+        elif P["mode"] == "land" and (P["phase"] != "fly" or t > 4.0):
+            self._update_landing(P, dt)
         else:
             goal = p.x + 40.0 * math.sin(t * 0.23)
             sp = 150.0 if abs(goal - P["x"]) > 120 else 34.0
             P["x"] += max(-sp * dt, min(sp * dt, goal - P["x"]))
             if abs(goal - P["x"]) < 160:
                 P["on"] = min(1.0, P["on"] + dt * 0.8)
-        P["bx"] = P["x"] + 78.0 * math.sin(t * 0.52 + P["ph"])
-        P["bd"] = 0.55 + 0.38 * math.sin(t * 0.39 + P["ph"] * 1.7)
+        if P["phase"] == "landed":
+            # Suchlicht vom Bug über die Straße vor dem Spinner
+            P["bx"] = P["x"] + P["face"] * (72.0 + 40.0 * math.sin(t * 0.5 + P["ph"]))
+            P["bd"] = 0.5 + 0.4 * math.sin(t * 0.37 + P["ph"] * 1.7)
+        else:
+            P["bx"] = P["x"] + 78.0 * math.sin(t * 0.52 + P["ph"])
+            P["bd"] = 0.55 + 0.38 * math.sin(t * 0.39 + P["ph"] * 1.7)
         lit_on = P["on"] > 0.5
         self.watched = lit_on and self.in_beam(p)
         for a in self.actors:
@@ -843,6 +1220,86 @@ class World:
             else:
                 a.lit_t = max(0.0, a.lit_t - dt * 2.0)
 
+    # ------------------------------------------------------------------ Spinner-Landung
+    def _land_spot(self):
+        """Freier Platz auf dem Mittelstreifen vor dem Spieler (keine Hindernisse,
+        kein Nudelstand, nicht am Tor)."""
+        p = self.player
+        base = p.x + p.facing * 95.0
+        for off in (0.0, 60.0, -60.0, 130.0, -130.0, 210.0):
+            x = min(self.length - 130.0, max(130.0, base + off))
+            if any(abs(x - r["x"]) < 120 for r in self.ramen):
+                continue
+            if any(abs(x - o["x"]) < o["w"] + 60 and abs(o["d"] - config.LAND_DEPTH) < 0.12
+                   for o in self.obstacles):
+                continue
+            return x
+        return None
+
+    def _spinner_liftoff(self, P):
+        P["phase"] = "lift"
+        if P["obs"] in self.obstacles:
+            self.obstacles.remove(P["obs"])
+        P["obs"] = None
+        self.events.append(("spinner_lift", P["face"]))
+
+    def _update_landing(self, P, dt):
+        """Polizei-Spinner landet auf dem Mittelstreifen: Abwind schiebt alles weg,
+        dann leuchtet er die Straße vom Boden aus ab und hebt wieder ab."""
+        p = self.player
+        ph = P["phase"]
+        if ph == "fly":
+            lx = self._land_spot()
+            if lx is None:
+                P["mode"] = "fly"
+                return
+            P["phase"], P["lx"] = "descend", lx
+            P["face"] = 1 if p.x >= lx else -1
+            self.events.append(("spinner_land", P["face"]))
+            self._say("Polizei-Spinner setzt zur Landung an - Kontrolle!")
+        elif ph == "descend":
+            dx = P["lx"] - P["x"]
+            P["x"] += max(-90.0 * dt, min(90.0 * dt, dx))
+            P["on"] = max(0.0, P["on"] - dt * 1.5)
+            if abs(dx) < 30.0:
+                P["alt"] = max(0.0, P["alt"] - dt / config.LAND_DESCENT_S)
+            if P["alt"] <= 0.0:
+                P["phase"] = "landed"
+                P["land_t"] = self.rng.uniform(*config.LAND_TIME)
+                P["obs"] = dict(x=P["x"], d=config.LAND_DEPTH, w=40.0, dd=0.07, h=60.0, kind="spinner", seed=0)
+                self.obstacles.append(P["obs"])
+                P["tt"] = 0.0
+                self.events.append(("spinner_touch",))
+        elif ph == "landed":
+            P["land_t"] -= dt
+            P["tt"] = P.get("tt", 0.0) + dt
+            P["on"] = min(1.0, P["on"] + dt * 1.2)
+            if P["land_t"] <= 0.0:
+                self._spinner_liftoff(P)
+        elif ph == "lift":
+            P["on"] = max(0.0, P["on"] - dt * 2.0)
+            P["alt"] = min(1.0, P["alt"] + dt / config.LAND_ASCENT_S)
+            if P["alt"] >= 1.0:
+                P["mode"], P["phase"], P["leaving"] = "fly", "fly", True
+        # Abwind der Turbinen beim Landen/Abheben: schiebt Figuren vom Landeplatz weg
+        if P["phase"] in ("descend", "lift", "landed") and P["alt"] < 0.7:
+            k = 1.0 - P["alt"] / 0.7
+            if P["phase"] == "landed":
+                k = max(0.0, 1.0 - P.get("tt", 0.0) * 0.8)
+            if k > 0.0:
+                for a in self.actors:
+                    if not a.alive or a.escaped:
+                        continue
+                    dxa = a.x - P["x"]
+                    if abs(dxa) < 75.0 and abs(a.depth - config.LAND_DEPTH) < 0.3:
+                        s = 1.0 if dxa >= 0 else -1.0
+                        nx = a.x + s * config.LAND_PUSH * k * dt
+                        if not self.blocked(nx, a.depth, a.z) or self.blocked(a.x, a.depth, a.z):
+                            a.x = nx
+            P["wash"] = k
+        else:
+            P["wash"] = 0.0
+
     def in_beam(self, a):
         P = self.patrol
         if P is None:
@@ -858,8 +1315,22 @@ class World:
 
     # ------------------------------------------------------------------ Ramen
     def _update_ramen(self, dt):
-        """Kurz am Nudelstand stehen bleiben füllt ein Herz auf (einmal pro Stand)."""
+        """Kurz am Nudelstand stehen bleiben füllt ein Herz auf (einmal pro Stand).
+        Der Koch ruft wie im White Dragon: „Akimashita! Irasshai!“ - ein Platz ist frei."""
         p = self.player
+        for i, r in enumerate(self.ramen):
+            if not r.get("greet") and abs(p.x - r["x"]) < config.RAMEN_RANGE + 44 and p.depth < 0.7:
+                r["greet"] = True
+                cook = _Spot(-300 - i, r["x"], r["depth"])
+                if r["used"]:
+                    continue
+                if p.hp >= self.run.max_hp:
+                    self.floater("FUTATSU DE JUBUN!", cook, (214, 220, 226), 2.4)
+                    self._say("Koch: Zwei reichen. (Integrität ist voll.)")
+                else:
+                    self.floater("IRASSHAI! PLATZ FREI!", cook, (255, 138, 44), 2.4)
+                    self._say("Koch: Akimashita! Ein Platz an der Theke ist frei.")
+                self.events.append(("greet",))
         if p.hp >= self.run.max_hp:
             for r in self.ramen:
                 r["t"] = 0.0
@@ -879,6 +1350,36 @@ class World:
                     self._say("Am Nudelstand gestärkt: +1 Integrität.")
             else:
                 r["t"] = max(0.0, r["t"] - dt)
+
+    # ------------------------------------------------------------------ Origami
+    def _place_origami(self):
+        """Eine gefaltete Figur pro Zone (eigener Zufallsstrom - ändert sonst nichts)."""
+        rng = random.Random(self.seed * 977 + self.zone_index * 31 + 5)
+        key, name = ORIGAMI[self.zone_index % len(ORIGAMI)]
+        for _ in range(40):
+            x = rng.uniform(0.15, 0.92) * self.length
+            d = rng.uniform(*rng.choice(config.OBSTACLE_BANDS))
+            if any(abs(x - o["x"]) < o["w"] + 20 and abs(d - o["d"]) < o["dd"] + 0.05 for o in self.obstacles):
+                continue
+            if any(abs(x - r["x"]) < 70 for r in self.ramen):
+                continue
+            return [dict(x=x, depth=d, kind=key, name=name, taken=False, seed=rng.randint(0, 999))]
+        return []
+
+    def _update_origami(self):
+        p = self.player
+        for o in self.origami:
+            if o["taken"] or abs(p.x - o["x"]) > 11.0 or abs(p.depth - o["depth"]) > 0.065:
+                continue
+            o["taken"] = True
+            self.stats["origami"] = True
+            self.run.origami.append(o["name"])
+            self.run.score += config.POINTS_ORIGAMI
+            self.stats["score"] += config.POINTS_ORIGAMI
+            self.scan_charges = float(self.scan_max)
+            self.floater(f"ORIGAMI: {o['name']}  +{config.POINTS_ORIGAMI}", p, (214, 220, 226), 2.6)
+            self._say("Gaff war hier. Scanner wieder voll geladen.")
+            self.events.append(("origami",))
 
     # ------------------------------------------------------------------ Endboss ROY
     def _spawn_boss(self):
@@ -977,6 +1478,9 @@ class World:
     def _panic_one(self, a, src_x):
         if not a.alive or a.state in ("flee", "attack"):
             return
+        if a.state == "duck":            # wer am Boden liegt, bleibt unten
+            a.timer = max(a.timer, 2.0)
+            return
         a.state = "panic"
         a.timer = self.rng.uniform(2.5, 4.5)
         a.facing = 1 if a.x >= src_x else -1
@@ -1032,7 +1536,8 @@ class World:
                     else:
                         a.timer = self.rng.uniform(3.0, 9.0)
                         if self.rng.random() < 0.3:
-                            a.target_depth = self.rng.uniform(config.DEPTH_MIN + 0.02, 0.97)
+                            lo, hi = a.home or (config.DEPTH_MIN + 0.02, 0.97)
+                            a.target_depth = self.rng.uniform(lo, hi)
                 if a.x < 30 and a.facing < 0 or a.x > L + 80 and a.facing > 0:
                     a.facing = -a.facing
             elif st == "idle":
@@ -1046,6 +1551,24 @@ class World:
                 if a.timer <= 0:
                     a.state = "walk"
                     a.timer = self.rng.uniform(3.0, 6.0)
+            elif st in ("duck", "freeze", "hands"):
+                a.vx = 0.0
+                if a.timer <= 0:
+                    if a.group >= 0 and abs(a.x - a.gx) < 30:
+                        a.state, a.timer = "loiter", self.rng.uniform(8.0, 30.0)
+                        a.facing = 1 if a.gx >= a.x else -1
+                    else:
+                        a.state = "idle"                   # erst umsehen, dann weiter
+                        a.timer = self.rng.uniform(0.8, 2.0)
+                        a.facing = self.rng.choice((-1, 1))
+            elif st == "loiter":
+                # Gruppe: stehen, zur Mitte schauen, ab und zu gestikulieren
+                a.vx = 0.0
+                a.facing = 1 if a.gx >= a.x else -1
+                if a.timer <= 0:
+                    a.state, a.timer = "walk", self.rng.uniform(4.0, 9.0)
+                    a.facing = self.rng.choice((-1, 1))
+                    a.group = -1
             elif st == "cower":
                 a.vx = 0.0
                 if a.timer <= 0 and a.aimed_t <= 0.1:
@@ -1106,17 +1629,17 @@ class World:
                 if a.timer <= 0:
                     a.state = "attack"
             # Auf Zielen reagieren
-            if a.aimed_t > 0.9 and a.state in ("walk", "idle", "panic"):
+            if a.aimed_t > 0.9 and a.state in ("walk", "idle", "panic", "loiter"):
                 if a.is_replicant and self.rng.random() < dt * 0.9:
                     self._alert(a)
                 elif not a.is_replicant:
                     a.state = "cower"
                     a.timer = 1.2
             # Hindernisse: Replikanten auf der Flucht springen drüber, alle anderen gehen außen herum
-            if a.z <= 0.0 and a.state not in ("punch", "cower", "idle"):
+            if a.z <= 0.0 and a.state not in ("punch", "cower", "idle", "duck", "freeze", "hands", "loiter"):
                 o = self._obstacle_ahead(a)
                 if o is not None:
-                    if a.is_replicant and a.state in ("flee", "attack") and self.zone_index >= 1:
+                    if a.is_replicant and a.state in ("flee", "attack") and self.zone_index >= 1 and o["h"] < 13:
                         a.vz = 135.0
                         a.z = 0.01
                     elif a.dodge_t <= 0.0:
@@ -1139,7 +1662,7 @@ class World:
             dd = a.target_depth - a.depth
             sp = 0.45 if a.dodge_t > 0 else (0.35 if a.state in ("flee", "panic", "attack", "leap") else 0.08)
             a.depth += max(-sp * dt, min(sp * dt, dd))
-            a.depth = min(config.DEPTH_MAX, max(config.DEPTH_MIN, a.depth))
+            a.depth = min(config.DEPTH_MAX, max(config.NPC_DEPTH_MIN, a.depth))
             self._animate(a, dt)
 
     def _escape(self, a):
@@ -1178,7 +1701,8 @@ class World:
                 a.exposure = max(0.0, a.exposure - dt)
                 continue
             focus = a is self.target
-            a.exposure += dt * rate * (1.0 if focus else 0.2)
+            fog = self.steam_at(a.x, a.depth)               # im Dampf sieht man fast nichts
+            a.exposure += dt * rate * (1.0 if focus else 0.2) * (1.0 - 0.75 * fog)
             if a.exposure >= config.OBSERVE_SECONDS:
                 a.exposure = 0.0
                 remaining = [t for t in WEAK_TELLS if t not in a.revealed]
@@ -1227,6 +1751,15 @@ class World:
         elif st == "cower":
             anim = "cower"
             a.phase = (a.phase + dt * 2.0) % 1.0
+        elif st == "duck":
+            anim = "duck"
+            a.phase = (a.phase + dt * 1.5) % 1.0
+        elif st == "hands":
+            anim = "hands"
+            a.phase = (a.phase + dt * 1.2) % 1.0
+        elif st == "loiter":
+            anim = "talk"
+            a.phase = (a.phase + dt * (0.35 + 0.1 * (a.uid % 3))) % 1.0
         elif st == "punch":
             anim = "punch"
             a.phase = min(0.99, 1.0 - max(0.0, a.timer) / 0.42)

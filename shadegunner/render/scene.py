@@ -19,7 +19,7 @@ from PyQt6.QtGui import (QBrush, QColor, QImage, QLinearGradient, QPainter, QPen
                          QPolygonF, QRadialGradient, QRegion)
 
 from .. import config, persp
-from . import pixfont, sprites, vehicles
+from . import holo, pixfont, sprites, vehicles
 from .city import CLOUD_F, MID_F, City, mix, mul, qc, soft_reflection
 from .fx import FX
 
@@ -190,6 +190,7 @@ class Scene:
             elif k == "kill":
                 fx.trauma = min(1.0, fx.trauma + 0.25)
 
+
     # ------------------------------------------------------------------ Frame
     def frame(self, world, dt=1 / 60, show_player=True, fade=0.0, power=1.0, cam_override=None):
         if self.city is None or self._zone_key[0] != world.zone_index:
@@ -239,13 +240,16 @@ class Scene:
         self._mid_life(p, e, cam, t)
         self._air_traffic(p, e, cam, t, far=False)
         self._spinners(p, e, dt, t, near=False)
+        self._holos(p, e, cam, t, "giant")
         self._fog_band(p)
         self._fog(p, 0, persp.FACADE_Y - 122, 128, cam * MID_F * 1.4 + t * 5.0, min(1.0, fd * 1.5))
         city.facade.draw(p, cam)
         city.facade.draw(e, cam, img=city.facade_emit, opacity=0.8 * (1.0 - self.dark))
         self._facade_life(p, e, cam, t, dt)
         self._street(p, e, cam, t)
-        self._ramen(p, world, cam, t, dt)
+        self._holos(p, e, cam, t, "street")
+        self._ramen(p, e, world, cam, t, dt)
+        self._shout_fx(p, e, world, cam, t)
         self._fog(p, 1, persp.FACADE_Y - 28, 72, cam * persp.ppu(0.0) + t * 9.0, min(1.0, fd * 0.7))
         self._actors(p, e, world, cam, t, show_player)
         if self.dark > 0:
@@ -535,39 +539,63 @@ class Scene:
             self._spinner_body(p, e, x, y, sc, d, t + s["ph"], near, s["police"])
 
     def _spinner_body(self, p, e, x, y, sc, d, t, near, police):
-        bw, bh = 22 * sc, 6 * sc
-        body = QPolygonF([QPointF(x - bw / 2 * d, y), QPointF(x - bw * 0.3 * d, y - bh * 0.9),
-                          QPointF(x + bw * 0.25 * d, y - bh), QPointF(x + bw / 2 * d, y - bh * 0.2),
-                          QPointF(x + bw * 0.45 * d, y + bh * 0.4), QPointF(x - bw * 0.45 * d, y + bh * 0.4)])
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(qc((18, 20, 30) if not near else (30, 32, 46)))
-        p.drawPolygon(body)
-        if near:
-            # Kantenlicht oben + Unterboden-Leuchtstreifen
-            p.fillRect(QRectF(x - bw * 0.3, y - bh * 0.95, bw * 0.55, 1), qc((70, 76, 100)))
-            for q in (p, e):
-                q.fillRect(QRectF(x - bw * 0.35, y + bh * 0.35, bw * 0.7, 1), qc(CYAN if not police else PALE))
-        p.fillRect(QRectF(x - bw * 0.15 * d - (bw * 0.25 if d < 0 else 0), y - bh * 0.75, bw * 0.25, bh * 0.3),
-                   qc((120, 150, 190)))
-        # Scheinwerfer + Kegel
-        hx = x + bw / 2 * d
-        for q in (p, e):
-            q.fillRect(QRectF(hx - 1, y - 1, 2, 2), qc(PALE))
-        p.setCompositionMode(PLUS)
-        g = QLinearGradient(hx, y, hx + 60 * sc * d, y + 20 * sc)
-        g.setColorAt(0, QColor(120, 120, 140, 70))
-        g.setColorAt(1, QColor(0, 0, 0, 0))
-        p.setBrush(QBrush(g))
-        p.drawPolygon(QPolygonF([QPointF(hx, y - 1), QPointF(hx + 60 * sc * d, y + 6 * sc),
-                                 QPointF(hx + 54 * sc * d, y + 26 * sc), QPointF(hx, y + 1)]))
-        p.setCompositionMode(OVER)
+        """Fliegender Spinner (gleiche Silhouette wie am Boden), Anker = Rumpfmitte."""
+        ppx = 22 * sc / vehicles.SPIN_L
+        far = near is None or (not near and sc < 0.9)
+        self._spinner_sprite(p, e, x, y + 10 * ppx, ppx, d, t, police, far=far, cone=True)
+
+    def _spinner_sprite(self, p, e, x, gy, ppx, d, t, police, far=False, cone=True):
+        img, em, ax, _ayc, ayg = vehicles.spinner_image(ppx, police, d, far)
+        kq = max(0.25, round(ppx * 8) / 8)
+        x0, y0 = int(x) - ax, int(gy) - ayg
+        p.drawImage(x0, y0, img)
+        if not far:
+            e.drawImage(x0, y0, em)
+        nx, ny = vehicles.SPIN_NOSE
+        hx, hy = x + nx * kq * d, gy + ny * kq
+        if cone:
+            p.setCompositionMode(PLUS)
+            ln = 60 * kq / 0.35 if not far else 30 * kq / 0.35
+            g = QLinearGradient(hx, hy, hx + ln * d, hy + ln * 0.3)
+            g.setColorAt(0, QColor(130, 130, 150, 70 if not far else 30))
+            g.setColorAt(1, QColor(0, 0, 0, 0))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QBrush(g))
+            p.drawPolygon(QPolygonF([QPointF(hx, hy - 1), QPointF(hx + ln * d, hy + ln * 0.08),
+                                     QPointF(hx + ln * 0.9 * d, hy + ln * 0.42), QPointF(hx, hy + 1)]))
+            p.setCompositionMode(OVER)
         if police:
-            c = MAGENTA if int(t * 6) % 2 == 0 else (90, 140, 255)
-            for q in (p, e):
-                q.fillRect(QRectF(x - 1, y - bh - 1, 3, 2), qc(c))
+            self._spinner_lights(p, e, x, gy, kq, kq, d, t)
         elif int(t * 1.5) % 2 == 0:
+            tx, ty = vehicles.SPIN_TAIL
             for q in (p, e):
-                q.fillRect(QRectF(x - bw / 2 * d - 1, y - 1, 2, 1), qc(CRIMSON))
+                q.fillRect(QRectF(x + tx * kq * d - 1, gy + ty * kq, 2, 1), qc(CRIMSON))
+
+    def _spinner_lights(self, p, e, cx, gy, kx, ky, d, t):
+        """Lichtbalken (rot/blau im Wechsel) + Mittelscheinwerfer + Blitzer am Unterboden."""
+        bx, by, bw, bh = vehicles.SPIN_BAR
+        ph = int(t * 7) % 4
+        w2 = bw * kx / 2
+        x0 = cx + bx * kx * d + (0 if d > 0 else -bw * kx)
+        y0 = gy + by * ky
+        hh = max(1.0, bh * ky)
+        left = MAGENTA if ph in (0, 1) else (40, 20, 30)
+        right = (90, 140, 255) if ph in (2, 3) else (20, 30, 50)
+        if ph == 1:
+            right = WHITE
+        for q in (p, e):
+            q.fillRect(QRectF(x0, y0, w2, hh), qc(left))
+            q.fillRect(QRectF(x0 + w2, y0, w2, hh), qc(right))
+            q.fillRect(QRectF(cx + (bx + 4.2) * kx * d - kx, y0 - max(1.0, 1.2 * ky), max(1.0, 2.4 * kx),
+                              max(1.0, 1.2 * ky)), qc(WHITE))
+        if ph in (0, 2):
+            c = MAGENTA if ph == 0 else (90, 140, 255)
+            p.setCompositionMode(PLUS)
+            rg = QRadialGradient(x0 + w2, y0, 18 * kx)
+            rg.setColorAt(0, QColor(c[0], c[1], c[2], 90))
+            rg.setColorAt(1, QColor(0, 0, 0, 0))
+            p.fillRect(QRectF(x0 + w2 - 18 * kx, y0 - 18 * kx, 36 * kx, 36 * kx), QBrush(rg))
+            p.setCompositionMode(OVER)
 
     def _fog_band(self, p):
         """Dunst über der Skyline: die Ferne versinkt stärker im Nebel als die Front."""
@@ -581,32 +609,213 @@ class Scene:
         g.setColorAt(1.0, QColor(*fc, int(255 * min(1.0, fd * 0.75))))
         p.fillRect(QRectF(0, fy - 150, W, 157), QBrush(g))
 
-    def _ramen(self, p, world, cam, t, dt):
-        """Warmes Licht und Dampf an den Nudelständen (verbraucht = gedimmt)."""
-        spots = getattr(world, "ramen", ())
-        if not spots:
-            return
+    def _ramen(self, p, e, world, cam, t, dt):
+        """Nudelbar lebt: Lichtpool auf dem nassen Asphalt, Glühbirnen, Laternen,
+        Koch mit Nudelsieb, flackernde Drachenzunge, Tropfen vom Vordach, Dampf."""
+        city = self.city
+        fac = city.facade
         rng = self.rng
-        p.setCompositionMode(PLUS)
+        spots = getattr(world, "ramen", ())
+        pl = world.player
+        lv_dark = 1.0 - 0.55 * self.dark
         p.setPen(Qt.PenStyle.NoPen)
-        for r in spots:
-            sx = persp.screen_x(r["x"], 0.16, cam)
-            if sx < -120 or sx > W + 120:
+        for sp in city.ramen_spots:
+            x0 = fac.screen_x(sp["L"], cam)
+            if x0 < -240 or x0 > W + 60:
                 continue
+            base = sp["base"]
+            cxw = (sp["L"] + sp["w"] / 2) / fac.factor
+            r = next((r for r in spots if abs(r["x"] - cxw) < 6), None)
+            used = r is not None and r["used"]
+            # Lichtpool auf der Straße (breit, warm) + Lichtkegel der Birnen
+            p.setCompositionMode(PLUS)
+            gx = persp.screen_x(cxw, 0.16, cam)
             gy = persp.ground_y(0.16)
-            lv = 0.3 if r["used"] else 1.0
-            g = QRadialGradient(sx, gy, 72)
-            g.setColorAt(0.0, QColor(255, 150, 60, int(95 * lv)))
-            g.setColorAt(0.5, QColor(255, 120, 40, int(35 * lv)))
+            g = QRadialGradient(gx, gy, 110)
+            g.setColorAt(0.0, QColor(255, 150, 60, int(62 * lv_dark)))
+            g.setColorAt(0.5, QColor(255, 110, 40, int(22 * lv_dark)))
             g.setColorAt(1.0, QColor(0, 0, 0, 0))
             p.save()
-            p.translate(sx, gy)
-            p.scale(1.0, 0.3)
-            p.translate(-sx, -gy)
-            p.fillRect(QRectF(sx - 72, gy - 72, 144, 144), QBrush(g))
+            p.translate(gx, gy)
+            p.scale(1.0, 0.28)
+            p.translate(-gx, -gy)
+            p.fillRect(QRectF(gx - 110, gy - 110, 220, 220), QBrush(g))
             p.restore()
-            if not r["used"] and rng.random() < dt * 3.0:
-                self.fx.puff(rng.uniform(-10, 10), gy - 30, wx=r["x"], depth=0.16, scale=1.3)
+            for i, (bl, by) in enumerate(sp["bulbs"]):
+                bx = fac.screen_x(bl, cam)
+                fl = 0.2 if (i == 2 and _hash(int(t * 15), int(bl)) < 0.12) else 1.0
+                rg = QRadialGradient(bx, by + 1, 18)
+                rg.setColorAt(0, QColor(255, 206, 140, int(55 * fl * lv_dark)))
+                rg.setColorAt(1, QColor(0, 0, 0, 0))
+                p.fillRect(QRectF(bx - 18, by - 17, 36, 36), QBrush(rg))
+                if fl < 1.0:        # Wackelkontakt: Birne kurz aus
+                    p.setCompositionMode(OVER)
+                    p.fillRect(QRectF(bx - 1, by, 3, 3), qc((70, 50, 30)))
+                    p.setCompositionMode(PLUS)
+            for (ll, ly) in sp["lanterns"]:
+                lx = fac.screen_x(ll, cam)
+                rg = QRadialGradient(lx, ly, 16)
+                rg.setColorAt(0, QColor(255, 60, 60, int(50 * lv_dark)))
+                rg.setColorAt(1, QColor(0, 0, 0, 0))
+                p.fillRect(QRectF(lx - 16, ly - 16, 32, 32), QBrush(rg))
+            p.setCompositionMode(OVER)
+            # Koch: grüßt, wenn der Blade Runner herankommt; reicht beim Essen die Schale
+            near = r is not None and abs(pl.x - r["x"]) < 70 and pl.depth < 0.7
+            serving = r is not None and r["t"] > 0.05 and not used
+            self._cook(p, e, fac.screen_x(sp["cook"], cam), base, t, near and not serving, serving)
+            if used:   # leere Schale am freien Platz
+                cx = int(fac.screen_x(sp["cook"], cam))
+                p.fillRect(QRectF(cx - 2, base - 20, 5, 2), qc((200, 202, 210)))
+            # Drachenzunge (rot, flackert wie im Film)
+            tl, ty = sp["tongue"]
+            tx = int(fac.screen_x(tl, cam))
+            if _hash(int(t * 11), int(tl)) > 0.35 and self.dark < 0.4:
+                for q in (p, e):
+                    q.fillRect(QRectF(tx - 3, ty, 3, 1), qc((255, 50, 70)))
+                    q.fillRect(QRectF(tx - 4, ty - 1, 1, 1), qc((255, 50, 70)))
+                    q.fillRect(QRectF(tx - 4, ty + 1, 1, 1), qc((255, 50, 70)))
+            # Wok-Flamme
+            wl, wy = sp["wok"]
+            wx = fac.screen_x(wl, cam)
+            fh = 2 + 3 * _hash(int(t * 20), int(wl))
+            for q in (p, e):
+                q.fillRect(QRectF(wx - 6, wy + 4, 12, 1), qc((90, 140, 255)))
+                q.fillRect(QRectF(wx - 4, wy + 4 - fh, 2, fh), qc(AMBER))
+                q.fillRect(QRectF(wx + 2, wy + 5 - fh, 2, fh - 1), qc(AMBER))
+            # Tropfen vom Vordach
+            lip = sp["lip"]
+            fall = base - lip - 2
+            for k, dl in enumerate(sp["drips"]):
+                ph = (t * 0.9 + _hash(k, int(sp["L"])) * 7.0) % 1.0
+                dx = int(fac.screen_x(dl, cam))
+                if ph < 0.7:
+                    y = lip + fall * (ph / 0.7) ** 2
+                    p.fillRect(QRectF(dx, int(y), 1, 2), qc((170, 182, 204)))
+                elif ph < 0.8:
+                    p.fillRect(QRectF(dx - 1, base - 1, 3, 1), qc((150, 160, 186)))
+            # Dampf: Suppentopf, Wok, Schalen
+            if rng.random() < dt * 4.0:
+                pl_, py_ = sp["pot"]
+                self.fx.puff(pl_ + rng.uniform(-6, 6), py_, scale=0.8)
+            if rng.random() < dt * 1.5:
+                self.fx.puff(wl + rng.uniform(-3, 3), wy - 2, scale=0.6)
+            for bl in sp.get("bowls", ()):
+                if rng.random() < dt * 0.5:
+                    self.fx.puff(bl, base - 22, scale=0.4)
+
+    def _cook(self, p, e, cx, base, t, greet, serving):
+        """Koch hinter der Theke: weiße Jacke, Stirnband, schüttelt das Nudelsieb."""
+        x = int(cx + math.sin(t * 1.3) * 2)
+        top_c = base - 18
+        jacket, shade, skin = (214, 196, 170), (150, 126, 100), (150, 104, 72)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.fillRect(QRectF(x - 5, base - 31, 10, top_c - base + 31), qc(jacket))
+        p.fillRect(QRectF(x - 5, base - 31, 2, top_c - base + 31), qc(shade))
+        p.fillRect(QRectF(x - 1, base - 31, 2, 2), qc(skin))
+        p.setBrush(qc(skin))
+        p.drawEllipse(QRectF(x - 3, base - 38, 7, 8))
+        p.fillRect(QRectF(x - 3, base - 38, 7, 2), qc((30, 24, 20)))
+        p.fillRect(QRectF(x - 4, base - 36, 9, 1), qc((240, 240, 244)))
+        p.fillRect(QRectF(x - 3, base - 38, 7, 1), qc(mix((30, 24, 20), AMBER, 0.5)))
+        pen = QPen(qc(jacket))
+        pen.setWidth(2)
+        if greet:          # winkt: „Irasshai!“
+            a = -1.9 + 0.35 * math.sin(t * 9)
+            sx, sy = x + 4, base - 31
+            hx, hy = sx + math.cos(a) * 7, sy + math.sin(a) * 7
+            p.setPen(pen)
+            p.drawLine(QPointF(sx, sy), QPointF(hx, hy))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.fillRect(QRectF(hx - 1, hy - 2, 3, 3), qc(skin))
+        elif serving:      # reicht die Schale über den Tresen
+            p.setPen(pen)
+            p.drawLine(QPointF(x + 4, base - 30), QPointF(x + 3, top_c - 3))
+            p.drawLine(QPointF(x - 4, base - 30), QPointF(x - 3, top_c - 3))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.fillRect(QRectF(x - 4, top_c - 3, 9, 3), qc((226, 228, 234)))
+            p.fillRect(QRectF(x - 3, top_c - 4, 7, 1), qc((214, 150, 80)))
+        else:              # Nudelsieb schütteln
+            k = math.sin(t * 7.0) * 2.0 if (t % 4.0) < 2.4 else 0.0
+            sx, sy = x + 4, base - 31
+            hx, hy = x + 9, top_c - 4 + k
+            p.setPen(pen)
+            p.drawLine(QPointF(sx, sy), QPointF(hx, hy))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.fillRect(QRectF(hx, hy, 5, 1), qc((120, 124, 134)))
+            p.setBrush(qc((150, 154, 166)))
+            p.drawChord(QRectF(hx + 4, hy - 1, 5, 4), 180 * 16, 180 * 16)
+            p.fillRect(QRectF(hx + 5, hy + 1, 3, 1), qc((230, 200, 120)))
+
+    # ------------------------------------------------------------------ Hologramme
+    def _holos(self, p, e, cam, t, kind):
+        city = self.city
+        hs = getattr(city, "holos", ())
+        if not hs:
+            return
+        dim = 1.0 - 0.85 * self.dark          # Stromausfall: Hologramme fallen (fast) aus
+        if dim <= 0.05:
+            return
+        for hd in hs:
+            if hd["kind"] != kind:
+                continue
+            lay = city.mid if kind == "giant" else city.facade
+            x = lay.screen_x(hd["L"], cam)
+            h = hd["h"]
+            if x < -h or x > W + h:
+                continue
+            if kind == "street":
+                # Projektorsockel mit Linse + schwacher Lichtsäule
+                b = hd["base"]
+                p.fillRect(QRectF(int(x) - 6, b - 4, 12, 5), qc((26, 28, 40)))
+                p.fillRect(QRectF(int(x) - 6, b - 4, 12, 1), qc(mul(self.city.th["rim"], 0.8)))
+                for q in (p, e):
+                    q.fillRect(QRectF(int(x) - 3, b - 5, 6, 1), qc(hd["col"]))
+                p.setCompositionMode(PLUS)
+                g = QLinearGradient(x, b - 5, x, b - h)
+                c = hd["col"]
+                g.setColorAt(0, QColor(c[0], c[1], c[2], int(40 * dim)))
+                g.setColorAt(1, QColor(0, 0, 0, 0))
+                p.setPen(Qt.PenStyle.NoPen)
+                p.setBrush(QBrush(g))
+                p.drawPolygon(QPolygonF([QPointF(x - 3, b - 5), QPointF(x - h * 0.3, b - h),
+                                         QPointF(x + h * 0.3, b - h), QPointF(x + 3, b - 5)]))
+                p.setCompositionMode(OVER)
+                holo.render(p, e, x, b - 5, h, c, t, hd["seed"], reflect=0.4, alpha=0.95 * dim,
+                            mirror=hd["mirror"])
+            else:
+                holo.render(p, e, x, hd["base"], h, hd["col"], t * 0.85, hd["seed"], alpha=0.6 * dim,
+                            mirror=hd["mirror"])
+
+    # ------------------------------------------------------------------ Ruf
+    def _shout_fx(self, p, e, world, cam, t):
+        """Rufwelle als Ring auf dem nassen Asphalt; beim Halten von V ein Lade-Ring."""
+        pl = world.player
+        rings = []
+        w = getattr(world, "wave", None)
+        if w is not None and w["r"] > 0:
+            k = w["r"] / max(1.0, w["R"])
+            rings.append((w["x"], w["depth"], w["r"], max(0.0, 1.0 - k) * 0.9 + 0.1, (214, 220, 226)))
+        hold = getattr(world, "shout_hold", -1.0)
+        if hold >= config.SHOUT_TAP and pl.alive:
+            R = world.shout_radius()
+            pulse = 0.55 + 0.25 * math.sin(t * 14)
+            rings.append((pl.x, pl.depth, R, pulse, (255, 138, 44)))
+        if not rings:
+            return
+        p.setCompositionMode(PLUS)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        for (x, d, r, a, col) in rings:
+            # Kreis in Welt-Einheiten (x, Tiefe*DEPTH_UNITS) -> Ellipse auf dem Boden
+            cx = persp.screen_x(x, d, cam)
+            cy = persp.ground_y(d)
+            rx = r * persp.ppu(d)
+            ry = r / config.DEPTH_UNITS * (persp.ground_y(1) - persp.ground_y(0))
+            for wd, aa in ((3, 0.35), (1, 1.0)):
+                pen = QPen(QColor(col[0], col[1], col[2], int(150 * a * aa)))
+                pen.setWidth(wd)
+                p.setPen(pen)
+                p.drawEllipse(QRectF(cx - rx, cy - ry, 2 * rx, 2 * ry))
+        p.setPen(Qt.PenStyle.NoPen)
         p.setCompositionMode(OVER)
 
     def _new_wisp(self, rng, initial=False):
@@ -913,17 +1122,28 @@ class Scene:
         items = [(a.depth if a.alive else a.depth - 0.002, 0, a) for a in world.actors
                  if not a.escaped and (show_player or not a.player)]
         items += [(v["depth"] - 0.001, 1, v) for v in getattr(world, "vehicles", ())]
-        items += [(o["d"] + o["dd"] * 0.5, 2, o) for o in getattr(world, "obstacles", ())]
-        items.sort(key=lambda it: it[0])
+        items += [(o["d"] + o["dd"] * 0.5, 2, o) for o in getattr(world, "obstacles", ())
+                  if o["kind"] not in ("spinner", "stack")]
+        items += [(m["d"] + 0.012, 5, m) for m in getattr(world, "manholes", ())]
         patrol = getattr(world, "patrol", None)
+        if patrol is not None and patrol.get("alt", 1.0) < 1.0:
+            items.append((config.LAND_DEPTH, 3, patrol))
+        items += [(o["depth"], 4, o) for o in getattr(world, "origami", ()) if not o["taken"]]
+        items.sort(key=lambda it: it[0])
         for _d, kind, obj in items:
             if kind == 0:
                 lit = patrol is not None and patrol["on"] > 0.3 and world.in_beam(obj)
                 self._draw_actor(p, e, obj, cam, t, lit)
             elif kind == 1:
                 self._draw_vehicle(p, e, obj, cam, t)
-            else:
+            elif kind == 2:
                 self._draw_obstacle(p, e, obj, cam, t)
+            elif kind == 3:
+                self._draw_landing(p, e, obj, cam, t)
+            elif kind == 5:
+                self._draw_steam(p, e, obj, cam, t)
+            else:
+                self._draw_origami(p, e, obj, cam, t)
 
     def _draw_actor(self, p, e, a, cam, t, lit=False):
         th = self.city.th
@@ -1071,12 +1291,8 @@ class Scene:
         p.drawImage(x0, y0, img)
         e.drawImage(x0, y0, em)
         if v["kind"] == "police":
-            on = int(t * 7 + v["seed"]) % 2 == 0
-            c = MAGENTA if on else (90, 140, 255)
-            k = k * vehicles.VEH_SCALE
-            top = gy - 17.5 * k
-            for q in (p, e):
-                q.fillRect(QRectF(cx - 6 * k + (0 if on else 6 * k), top, 6 * k, 2 * k), qc(c))
+            kk = k * vehicles.VEH_SCALE
+            self._spinner_lights(p, e, cx, gy, kk * 60.0 / vehicles.SPIN_L, kk, v["dir"], t + v["seed"])
 
     def _vehicle_lights(self, p, e, world, cam, t):
         """Scheinwerferkegel und Lichtflecken auf der nassen Fahrbahn (additiv)."""
@@ -1093,7 +1309,7 @@ class Scene:
             gy = persp.ground_y(d)
             dr = v["dir"]
             fx_ = cx + dr * v["L"] * 0.5 * k
-            hy = gy - (11 if v["kind"] == "truck" else 8.5) * k * vehicles.VEH_SCALE
+            hy = gy - {"truck": 11.0, "bus": 12.0, "police": 8.4}.get(v["kind"], 9.0) * k * vehicles.VEH_SCALE
             vehicles.headlight(p, fx_, hy, dr, k, gy, length=120.0, a=80)
             rg = QRadialGradient(fx_ + dr * 50 * k, gy, 60 * k)
             rg.setColorAt(0, QColor(255, 240, 210, 70))
@@ -1112,7 +1328,170 @@ class Scene:
             p.fillRect(QRectF(bx - 16 * k, gy - 23 * k, 32 * k, 32 * k), QBrush(rg))
         p.setCompositionMode(OVER)
 
+    # Gaffs Origami: Silhouetten in Welt-Einheiten (Boden y = 0, Blick nach +x)
+    ORIGAMI_SHAPES = {
+        "huhn": [((-4, 0), (-1, -5), (3, -5), (4, 0)), ((-4, -2), (-6.5, -7), (-2, -4)),
+                 ((2, -5), (3.5, -9), (5, -8.5), (4, -5)), ((5, -8.5), (7, -8), (5, -7.6))],
+        "mann": [((-0.6, 0), (-0.2, -6), (0.6, -6), (0.2, 0)), ((-3, 0), (-0.4, -5.6), (0.2, -5.2), (-2.2, 0)),
+                 ((3, 0), (0.4, -5.6), (-0.2, -5.2), (2.2, 0)), ((-3.4, -6.6), (0, -7.4), (3.4, -6.6), (0, -6.2)),
+                 ((-1.2, -8), (0, -9.8), (1.2, -8), (0, -7.2)), ((0.4, -4.4), (3.2, -3.4), (0.4, -3.8))],
+        "schaf": [((-4.5, -2.5), (-3, -6.5), (3, -6.5), (4.5, -2.5)), ((-4, -2.5), (-3.4, 0), (-2.8, -2.5)),
+                  ((3, -2.5), (3.6, 0), (4.2, -2.5)), ((3.5, -6), (6.5, -7.5), (7, -4.5), (4.5, -4))],
+        "kranich": [((-6, -3), (0, -1), (6, -3), (0, -3.6)), ((-1.5, -3.2), (1, -9), (2, -3.2)),
+                    ((-6, -3), (-8, -7), (-5, -3.4)), ((6, -3), (8, -7.5), (9, -7), (5, -3.4))],
+        "einhorn": [((-4.5, -3), (-3.5, -7), (3.5, -7), (4.5, -3)), ((-4, -3), (-3.6, 0), (-2.8, -3)),
+                    ((3, -3), (3.6, 0), (4.2, -3)), ((3, -6.5), (5.5, -10.5), (7, -9.5), (5, -6)),
+                    ((6, -10), (9, -14), (6.8, -9.6)), ((-4.5, -6.6), (-7, -4), (-4.4, -5))],
+    }
+
+    def _draw_origami(self, p, e, o, cam, t):
+        """Gefaltete Papierfigur am Straßenrand; blinkt alle paar Sekunden kurz auf."""
+        d = o["depth"]
+        k = persp.ppu(d) * 1.4
+        cx = persp.screen_x(o["x"], d, cam)
+        if cx < -30 or cx > W + 30:
+            return
+        gy = persp.ground_y(d)
+        paper = (200, 210, 230) if o["kind"] == "einhorn" else (220, 222, 228)
+        fold = mul(paper, 0.7)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(0, 0, 0, 110))
+        p.drawEllipse(QRectF(cx - 6 * k, gy - 1.2 * k, 12 * k, 2.4 * k))
+        for i, poly in enumerate(self.ORIGAMI_SHAPES[o["kind"]]):
+            pts = QPolygonF([QPointF(cx + x * k, gy + y * k) for x, y in poly])
+            p.setBrush(qc(paper if i % 2 == 0 else fold))
+            p.drawPolygon(pts)
+            p.setOpacity(0.35 * getattr(self, "_reflk", 1.0))
+            p.drawPolygon(QPolygonF([QPointF(cx + x * k, gy - y * k * 0.8) for x, y in poly]))
+            p.setOpacity(1.0)
+        # Glanzpunkt: alle ~2,4 s ein kurzer Stern
+        ph = (t + o["seed"] * 0.01) % 2.4
+        if ph < 0.35:
+            a = 1.0 - ph / 0.35
+            sy = gy - 9 * k
+            r = 2 + 5 * a
+            for q in (p, e):
+                q.fillRect(QRectF(cx - r, sy, 2 * r + 1, 1), qc(WHITE, int(255 * a)))
+                q.fillRect(QRectF(cx, sy - r, 1, 2 * r + 1), qc(WHITE, int(255 * a)))
+
+    def _draw_parked(self, p, e, o, cam, t):
+        """Geparktes Fahrzeug: Motor aus, Lichter fast dunkel, manche mit Warnblinker."""
+        d = o["d"]
+        k = persp.ppu(d)
+        cx = persp.screen_x(o["x"], d, cam)
+        if cx < -o["w"] * 2 * k or cx > W + o["w"] * 2 * k:
+            return
+        gy = persp.ground_y(d)
+        img, em, ax, ay, _lpx = vehicles.vehicle_image(o["veh"], o["seed"], k, self.city.th["rim"], o["dir"])
+        x0, y0 = int(cx) - ax, int(gy) - ay
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(0, 0, 0, 140))
+        p.drawEllipse(QRectF(cx - o["w"] * k * 1.1, gy - 3 * k, o["w"] * k * 2.2, 5 * k))
+        p.setOpacity(min(1.0, 0.5 * getattr(self, "_reflk", 1.0)))
+        p.drawImage(x0, int(gy) - (img.height() - 1 - ay), self._mirror(img))
+        p.setOpacity(1.0)
+        p.drawImage(x0, y0, img)
+        e.setOpacity(0.12)
+        e.drawImage(x0, y0, em)
+        e.setOpacity(1.0)
+        if o["veh"] == "police":
+            kk = k * vehicles.VEH_SCALE
+            self._spinner_lights(p, e, cx, gy, kk * 60.0 / vehicles.SPIN_L, kk, o["dir"], t + o["seed"])
+        elif o.get("hazard") and int(t * 1.7 + o["seed"] * 0.01) % 2 == 0:
+            hy = gy - 8 * k
+            for sx in (cx - o["w"] * k * 0.92, cx + o["w"] * k * 0.92):
+                for q in (p, e):
+                    q.fillRect(QRectF(sx - 1.2 * k, hy, 2.4 * k + 1, 1.6 * k + 1), qc(AMBER))
+                rg = QRadialGradient(sx, gy, 18 * k)
+                rg.setColorAt(0, QColor(255, 150, 40, 60))
+                rg.setColorAt(1, QColor(0, 0, 0, 0))
+                p.setCompositionMode(PLUS)
+                p.fillRect(QRectF(sx - 18 * k, gy - 5 * k, 36 * k, 10 * k), QBrush(rg))
+                p.setCompositionMode(OVER)
+
+    def _draw_steam(self, p, e, m, cam, t):
+        """Dampfender Gulli (oder gestreifter Dampfschlot): Deckel mit Glut im Spalt,
+        darüber Schwaden, die aufsteigen, wachsen, abdriften und das Neon fangen."""
+        d = m["d"]
+        k = persp.ppu(d)
+        cx = persp.screen_x(m["x"], d, cam)
+        if cx < -90 * k or cx > W + 90 * k:
+            return
+        gy = persp.ground_y(d)
+        s = m.get("s", 0.5)
+        p.setPen(Qt.PenStyle.NoPen)
+        if m["stack"]:
+            # Con-Ed-Schlot: orange-weiß gestreift, schwarze Kappe
+            sw, sh = 3.6 * k, 14.0 * k
+            p.setBrush(QColor(0, 0, 0, 120))
+            p.drawEllipse(QRectF(cx - sw, gy - 1.5 * k, sw * 2, 3 * k))
+            n = 6
+            for i in range(n):
+                col = (232, 104, 34) if i % 2 == 0 else (226, 222, 214)
+                y0 = gy - sh * (i + 1) / n
+                p.fillRect(QRectF(cx - sw / 2, y0, sw, sh / n + 1), qc(mul(col, 0.62)))
+                p.fillRect(QRectF(cx - sw / 2, y0, sw * 0.35, sh / n + 1), qc(mul(col, 0.85)))
+            p.fillRect(QRectF(cx - sw / 2 - 0.6 * k, gy - sh - 1.4 * k, sw + 1.2 * k, 1.6 * k), qc((26, 26, 32)))
+            src_y, rise = gy - sh - 1.0 * k, 95.0
+        else:
+            p.setBrush(qc((14, 14, 20)))
+            p.drawEllipse(QRectF(cx - 6.5 * k, gy - 1.3 * k, 13 * k, 2.6 * k))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            pen = QPen(qc((70, 72, 86)))
+            pen.setWidthF(max(1.0, 0.6 * k))
+            p.setPen(pen)
+            p.drawEllipse(QRectF(cx - 6.5 * k, gy - 1.3 * k, 13 * k, 2.6 * k))
+            p.setPen(Qt.PenStyle.NoPen)
+            glow = int(90 + 80 * s)
+            for q in (p, e):                                  # Glut in den Löchern
+                for i in (-2, 0, 2):
+                    q.fillRect(QRectF(cx + i * 1.8 * k - 0.5 * k, gy - 0.3 * k, 1.0 * k + 1, 0.6 * k + 1),
+                               QColor(255, 120, 40, glow))
+            src_y, rise = gy - 0.5 * k, 75.0
+        # Bodennebel um den Gulli
+        tint = mix((222, 222, 232), self.city.th["fog"], 0.3)
+        rg = QRadialGradient(cx, gy, 34 * k)
+        rg.setColorAt(0.0, QColor(tint[0], tint[1], tint[2], int(70 * s)))
+        rg.setColorAt(1.0, QColor(0, 0, 0, 0))
+        p.save()
+        p.translate(cx, gy)
+        p.scale(1.0, 0.22)
+        p.fillRect(QRectF(-34 * k, -34 * k, 68 * k, 68 * k), QBrush(rg))
+        p.restore()
+        # Schwaden: dichter Strahl an der Quelle, darüber aufsteigende, wachsende Ballen
+        n = 22
+        side = 1 if m["seed"] % 2 else -1
+        rate = 0.32
+        for i in range(n):
+            u = (t + m["seed"] * 0.37) * rate + i / n
+            age = u % 1.0
+            fade = min(1.0, age / 0.05) * (1.0 - age) ** 1.6
+            a = min(1.0, s * 1.25) * fade
+            if a < 0.04:
+                continue
+            h = _hash(i * 13 + int(u), m["seed"])
+            ox = (m.get("drift", 0.0) * age + age * age * (34.0 + 26 * h) * side
+                  + math.sin(age * 6.0 + i * 1.7) * 3.5 * age + (h - 0.5) * 4.0 * age)
+            r = (2.2 + 15.0 * age ** 0.9 + 3.5 * h) * k
+            px, py = cx + ox * k, src_y - (age ** 0.8) * rise * k
+            col = mix(tint, (250, 250, 255), max(0.0, 0.5 - age))     # unten heller
+            rg = QRadialGradient(px, py, r)
+            rg.setColorAt(0.0, QColor(col[0], col[1], col[2], int(235 * a)))
+            rg.setColorAt(0.55, QColor(col[0], col[1], col[2], int(150 * a)))
+            rg.setColorAt(1.0, QColor(col[0], col[1], col[2], 0))
+            p.setBrush(QBrush(rg))
+            p.drawEllipse(QRectF(px - r, py - r * 0.85, 2 * r, 1.7 * r))
+            if age < 0.5:                                 # unten fängt der Dampf das Licht
+                rg.setColorAt(0.0, QColor(col[0], col[1], col[2], int(34 * a)))
+                rg.setColorAt(0.55, QColor(col[0], col[1], col[2], int(10 * a)))
+                e.setBrush(QBrush(rg))
+                e.setPen(Qt.PenStyle.NoPen)
+                e.drawEllipse(QRectF(px - r, py - r * 0.85, 2 * r, 1.7 * r))
+
     def _draw_obstacle(self, p, e, o, cam, t):
+        if o["kind"] == "parked":
+            self._draw_parked(p, e, o, cam, t)
+            return
         d = o["d"]
         k = persp.ppu(d)
         cx = persp.screen_x(o["x"], d, cam)
@@ -1176,13 +1555,95 @@ class Scene:
         P = getattr(world, "patrol", None)
         if P is None:
             return None
-        sx = persp.screen_x(P["x"], 0.35, cam)
-        sy = 46 + math.sin(t * 1.4) * 2.0
         bx = persp.screen_x(P["bx"], P["bd"], cam)
         by = persp.ground_y(P["bd"])
         rx = 34 * persp.ppu(P["bd"])
         ry = 0.13 * (persp.ground_y(1) - persp.ground_y(0))
-        return P, sx, sy, bx, by, rx, ry
+        alt = P.get("alt", 1.0)
+        sx = persp.screen_x(P["x"], 0.35, cam)
+        sy = 46 + math.sin(t * 1.4) * 2.0
+        if alt >= 1.0:
+            return P, sx, sy + 4, bx, by, rx, ry
+        k = self._land_pose(P, cam, t)
+        x, yg, ppx, d = k
+        nx, ny = vehicles.SPIN_NOSE
+        return P, x + nx * ppx * d, yg + ny * ppx, bx, by, rx, ry
+
+    def _land_pose(self, P, cam, t):
+        """Bildposition eines landenden Spinners: (x, y_boden, px pro Zeichen-Einheit, d)."""
+        alt = P.get("alt", 1.0)
+        u = alt * alt * (3 - 2 * alt)
+        ppx_s = 22 * 2.4 / vehicles.SPIN_L
+        sx = persp.screen_x(P["x"], 0.35, cam)
+        sy = 46 + math.sin(t * 1.4) * 2.0 + 10 * ppx_s
+        D = config.LAND_DEPTH
+        ppx_g = persp.ppu(D) * vehicles.VEH_SCALE
+        gx = persp.screen_x(P["x"], D, cam)
+        gy = persp.ground_y(D) - (0.0 if P.get("phase") == "landed" else 2.0 * math.sin(t * 3.0) * (1 - u))
+        return (gx + (sx - gx) * u, gy + (sy - gy) * u, ppx_g + (ppx_s - ppx_g) * u, P.get("face", 1))
+
+    def _draw_landing(self, p, e, P, cam, t):
+        """Landender/gelandeter Spinner, nach Tiefe einsortiert (mit Schatten, Spiegelung,
+        Turbinenglühen, Abwind und rot-blauem Lichtschein auf dem nassen Asphalt)."""
+        x, yg, ppx, d = self._land_pose(P, cam, t)
+        D = config.LAND_DEPTH
+        gx, gy = persp.screen_x(P["x"], D, cam), persp.ground_y(D)
+        alt = P.get("alt", 1.0)
+        L = vehicles.SPIN_L * ppx
+        # Schatten wächst, je tiefer er kommt
+        sh = max(0.0, 1.0 - alt)
+        if sh > 0.02:
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor(0, 0, 0, int(140 * sh)))
+            w = persp.ppu(D) * 90 * (0.6 + 0.5 * sh)
+            p.drawEllipse(QRectF(gx - w / 2, gy - 4, w, 8))
+        img, em, ax, _ayc, ayg = vehicles.spinner_image(ppx, True, d, False)
+        if alt < 0.25:
+            p.setOpacity(min(1.0, 0.5 * getattr(self, "_reflk", 1.0)) * (1 - alt * 4))
+            p.drawImage(int(x) - ax, int(gy) - (img.height() - 1 - ayg) + int(gy - yg), self._mirror(img))
+            p.setOpacity(1.0)
+        # Abwind: heller Luftschleier unter dem Rumpf + Gischt am Boden
+        wash = P.get("wash", 0.0)
+        p.setCompositionMode(PLUS)
+        if alt > 0.0 or wash > 0:
+            g = QLinearGradient(x, yg - 6 * ppx, x, gy)
+            a = int(60 * max(wash, 0.4 if alt < 1 else 0.0))
+            g.setColorAt(0, QColor(200, 210, 230, a))
+            g.setColorAt(1, QColor(200, 210, 230, 0))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QBrush(g))
+            p.drawPolygon(QPolygonF([QPointF(x - L * 0.3, yg - 4 * ppx), QPointF(x + L * 0.3, yg - 4 * ppx),
+                                     QPointF(x + L * 0.75, gy + 3), QPointF(x - L * 0.75, gy + 3)]))
+        if wash > 0.05:
+            for k in range(3):     # Druckwellen-Ringe auf dem Wasserfilm
+                ph = (t * 1.6 + k / 3.0) % 1.0
+                rw = L * (0.4 + 1.2 * ph)
+                pen = QPen(QColor(190, 200, 230, int(90 * wash * (1 - ph))))
+                pen.setWidth(1)
+                p.setPen(pen)
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                p.drawEllipse(QRectF(gx - rw / 2, gy - rw * 0.06, rw, rw * 0.12))
+            p.setPen(Qt.PenStyle.NoPen)
+            if self.rng.random() < wash * 0.9:
+                self.fx.puff(self.rng.uniform(-40, 40), gy - 4, wx=P["x"], depth=D, scale=1.4)
+        # Rot-blauer Schein auf der nassen Straße, wenn er steht
+        if P.get("phase") == "landed":
+            on = int(t * 7) % 4 < 2
+            c = (224, 72, 150) if on else (90, 140, 255)
+            rg = QRadialGradient(gx, gy, L * 0.9)
+            rg.setColorAt(0, QColor(c[0], c[1], c[2], 55))
+            rg.setColorAt(1, QColor(0, 0, 0, 0))
+            p.save()
+            p.translate(gx, gy)
+            p.scale(1.0, 0.3)
+            p.translate(-gx, -gy)
+            p.fillRect(QRectF(gx - L, gy - L, 2 * L, 2 * L), QBrush(rg))
+            p.restore()
+        p.setCompositionMode(OVER)
+        self._spinner_sprite(p, e, x, yg, ppx, d, t, True, far=False, cone=alt > 0.05)
+        if alt > 0.0:       # Turbinen glühen nach unten
+            for q in (p, e):
+                q.fillRect(QRectF(x - L * 0.32, yg - 3.6 * ppx, L * 0.5, max(1.0, ppx * 0.9)), qc((255, 200, 140)))
 
     def _patrol(self, p, e, world, cam, t):
         g = self._patrol_geom(world, cam, t)
@@ -1192,13 +1653,13 @@ class Scene:
         P, sx, sy, bx, by, rx, ry = g
         on = P["on"]
         if on > 0.02:
-            poly = QPolygonF([QPointF(sx - 2, sy + 4), QPointF(bx - rx, by), QPointF(bx + rx, by), QPointF(sx + 2, sy + 4)])
+            poly = QPolygonF([QPointF(sx - 2, sy), QPointF(bx - rx, by), QPointF(bx + rx, by), QPointF(sx + 2, sy)])
             self._beam_poly = (poly, on)
             p.setCompositionMode(PLUS)
             p.setPen(Qt.PenStyle.NoPen)
             for wf, a in ((1.0, 34), (0.55, 40)):
-                pl = QPolygonF([QPointF(sx - 2, sy + 4), QPointF(bx - rx * wf, by), QPointF(bx + rx * wf, by),
-                                QPointF(sx + 2, sy + 4)])
+                pl = QPolygonF([QPointF(sx - 2, sy), QPointF(bx - rx * wf, by), QPointF(bx + rx * wf, by),
+                                QPointF(sx + 2, sy)])
                 gr = QLinearGradient(sx, sy, bx, by)
                 gr.setColorAt(0, QColor(210, 225, 255, int(a * 2.2 * on)))
                 gr.setColorAt(1, QColor(210, 225, 255, int(a * on)))
@@ -1215,12 +1676,14 @@ class Scene:
             p.fillRect(QRectF(bx - rx, by - rx, 2 * rx, 2 * rx), QBrush(rg))
             p.restore()
             p.setCompositionMode(OVER)
+        if P.get("alt", 1.0) < 1.0:
+            return          # steht/landet: wird nach Tiefe sortiert in _actors gezeichnet
         # Der Spinner selbst
         d = P["dir"] if P.get("leaving") else (1 if (P["bx"] - P["x"]) >= 0 else -1)
-        self._spinner_body(p, e, sx, sy, 2.4, d, t, True, True)
+        self._spinner_body(p, e, sx, sy - 4, 2.4, d, t, True, True)
         # Scheinwerfer-Gondel unter dem Rumpf
         for q in (p, e):
-            q.fillRect(QRectF(sx - 2, sy + 3, 4, 2), qc(WHITE))
+            q.fillRect(QRectF(sx - 2, sy - 1, 4, 2), qc(WHITE))
 
     def _beam_rain(self, p):
         """Regentropfen im Suchlicht hell nachzeichnen (wie im Film)."""

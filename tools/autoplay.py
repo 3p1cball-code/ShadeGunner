@@ -6,6 +6,7 @@ bei Ladung scannen, ab Konfidenz-Schwelle schießen (Schusslinie per Tiefe frei
 machen), Angreifer sofort erschießen. Ausgabe: Statistik pro Zone über N Runs.
 
 Aufruf: python3 tools/autoplay.py [runs] [schwelle]
+Umgebung: BOT_SHOUT=0 (Ruf nicht benutzen), BOT_DIFF=leicht|normal|schwer
 """
 
 import os
@@ -18,6 +19,8 @@ from shadegunner import config  # noqa: E402
 from shadegunner.sim import ZONES, Run, World  # noqa: E402
 
 DT = 1 / 30
+SHOUT = os.environ.get("BOT_SHOUT", "1") == "1"
+DIFF = os.environ.get("BOT_DIFF", "normal")
 
 
 def bot_step(w, thr, mem):
@@ -33,6 +36,8 @@ def bot_step(w, thr, mem):
         if hostile or (tg.revealed and conf >= thr):
             blk = w.line_of_fire(tg)
             if blk is not tg and blk is not None:
+                if SHOUT and w.shout_ready():           # Menge runter, dann drüber schießen
+                    return dict(move=(0, 0), shout_crowd=True)
                 inp["move"] = (0, 1 if tg.depth > p.depth else -1)
                 return inp
             if mem.get("aim", 0) < 0.25:
@@ -71,7 +76,10 @@ def dodge(w, inp):
     mx = inp.get("move", (0, 0))[0]
     if mx and p.z <= 0 and w.blocked(p.x + 8 * (1 if mx > 0 else -1), p.depth, 0.0):
         out = dict(inp)
-        out["jump"] = True
+        if w.blocked(p.x + 8 * (1 if mx > 0 else -1), p.depth, 15.0):   # zu hoch (parkendes Auto)
+            out["move"] = (mx, 1 if p.depth < 0.6 else -1)
+        else:
+            out["jump"] = True
         return out
     for a in w.living():
         if a.state in ("leap", "punch") and abs(a.x - p.x) < 50 and abs(a.depth - p.depth) < 0.12 and p.z <= 0:
@@ -83,7 +91,7 @@ def dodge(w, inp):
 
 def play(seed, thr):
     rng = random.Random(seed)
-    run = Run(seed)
+    run = Run(seed, DIFF)
     w = World(run, seed=seed, zone_index=0)
     mem = {}
     rows = []

@@ -25,7 +25,7 @@ C = config.NOIR16
 # Animationen: Name -> Frames (zyklisch, außer 'die')
 ANIMS = {
     "idle": 4, "walk": 8, "run": 6, "panic": 6, "die": 9,
-    "aim": 1, "shoot": 2, "scan": 2, "hurt": 1, "punch": 3, "cower": 2, "jump": 1,
+    "aim": 1, "shoot": 2, "scan": 2, "hurt": 1, "punch": 3, "cower": 2, "jump": 1, "duck": 2, "hands": 2, "talk": 4,
 }
 
 # Mantelfarben mit deutschem Adjektiv (Kopfgeld-Beschreibung muss sagbar sein)
@@ -167,6 +167,25 @@ def pose(anim, t):
         P["arms"] = [(2.7 + tr, 0.55), (2.85 - tr, 0.5)]
         P["lean"] = -0.1
         P["crouch"] = 1.2
+    elif anim == "duck":
+        # In Deckung: tief in der Hocke, Hände über dem Kopf (Schüsse gehen drüber)
+        tr = 0.05 * s
+        P["legs"] = [(1.2, 2.35), (1.0, 2.2)]
+        P["arms"] = [(2.6 + tr, 0.7), (2.8 - tr, 0.6)]
+        P["lean"] = 0.42
+        P["crouch"] = 12.6
+    elif anim == "hands":
+        # Hände hoch (angesprochen)
+        P["legs"] = [(-0.08, 0.06), (0.1, 0.05)]
+        P["arms"] = [(2.55 + 0.04 * s, -0.5), (2.7 - 0.04 * s, -0.45)]
+        P["lean"] = -0.06
+    elif anim == "talk":
+        # Herumstehen und reden: Gewicht verlagern, eine Hand gestikuliert
+        g = max(0.0, math.sin(phi))
+        P["legs"] = [(-0.1, 0.06), (0.12 + 0.04 * c, 0.08)]
+        P["arms"] = [(0.08, 0.2), (0.35 + 0.55 * g, 0.9 + 0.5 * g)]
+        P["bob"] = 0.2 * c
+        P["lean"] = 0.03
     elif anim == "jump":
         P["legs"] = [(-0.55, 1.5), (0.85, 1.75)]
         P["arms"] = [(-0.9, 0.9), (1.9, 0.6)]
@@ -571,7 +590,7 @@ def _fallen_umbrella(p, emit, look):
 # ---------------------------------------------------------------------------- Cache / API
 
 _CACHE = {}
-_CACHE_MAX = 7000
+_CACHE_MAX = 14000
 _PAD = 26.0     # Design-Einheiten Rand links/rechts (Schirm, Sturz)
 _TOP = 60.0
 _BOT = 4.0

@@ -86,6 +86,8 @@ FIGURE_H_NEAR = 0.215   # Figurenhöhe (Anteil Bildhöhe) bei Tiefe 1
 VIEW_SPAN_NEAR = 300.0
 
 DEPTH_MIN = 0.10
+NPC_DEPTH_MIN = 0.02    # Passanten dürfen bis an die Hauswand (hinterer Gehweg)
+SIDEWALK = (0.02, 0.09) # hinterer Gehweg: Flaneure und Gruppen vor den Läden
 DEPTH_MAX = 1.0
 DEPTH_UNITS = 160.0     # wie viele Welt-Einheiten die volle Tiefe für Distanzen zählt
 
@@ -103,6 +105,30 @@ STRIDE_UNITS = 30.0      # Welt-Einheiten pro vollem Schrittzyklus (gegen Fußru
 JUMP_V = 132.0
 GRAVITY = 640.0
 JUMP_SAFE_Z = 5.0        # ab dieser Höhe gehen Schläge/Sprungangriffe ins Leere
+
+# Ruf (V): „LAPD! Alle runter!“ - Menge geht in Deckung, Schüsse gehen über Geduckte
+# V tippen = Ansprache (nur das Ziel), V halten = Ruf an die Menge (Radius wächst).
+SHOUT_TAP = 0.3           # kürzer gedrückt = Ansprache
+SHOUT_CHARGE = 1.0        # so lange bis zum vollen Radius
+SHOUT_RADIUS = (70.0, 160.0)   # Radius beim Loslassen: min .. max (u, Tiefe zählt mit)
+SHOUT_SPEED = 240.0       # Ausbreitung der Rufwelle u/s (wer weiter weg ist, reagiert später)
+SHOUT_CD = 10.0           # Abklingzeit Menge s
+SHOUT_DUCK = (3.2, 4.6)   # so lange bleiben sie unten / reglos
+SHOUT_SCATTER = 0.15      # Anteil Menschen, die lieber wegrennen (+ Unruhe)
+SHOUT_ALERT = 0.3         # x Zonen-Fluchtrate: Replikant fühlt sich ertappt (Menge)
+TALK_RANGE = 110.0        # Ansprache: Reichweite
+TALK_CD = 2.5
+TALK_ALERT = 0.45         # Ansprache ist direkter: Replikanten fühlen sich eher ertappt
+UNREST_PER_SHOUT = 0.34   # jeder Ruf macht die Straße unruhiger ...
+UNREST_DECAY = 0.025      # ... und sie beruhigt sich langsam (pro s)
+
+# Schwierigkeit: mehr Menschen je Viertel (Prior sinkt, Schusslinien voller)
+DIFFICULTY = {
+    "leicht": dict(density=0.7, label="LEICHT"),
+    "normal": dict(density=1.0, label="NORMAL"),
+    "schwer": dict(density=1.4, label="SCHWER"),
+}
+DIFFICULTY_ORDER = ["leicht", "normal", "schwer"]
 
 # Ramen-Stand: kurz stehen bleiben füllt ein Herz auf (einmal pro Stand)
 RAMEN_TIME = 1.2
@@ -128,8 +154,21 @@ ROY_TRIGGER = 320.0       # Abstand zum Zonenende, ab dem er auftritt
 # Straße: Fahrspuren, Verkehr, Hindernisse
 # ----------------------------------------------------------------------------------
 
+# Polizei-Spinner landen ab und zu auf dem Mittelstreifen (Kontrolle vom Boden aus)
+SPINNER_LAND_CHANCE = 0.45
+LAND_DEPTH = 0.525
+LAND_DESCENT_S = 2.6
+LAND_ASCENT_S = 2.2
+LAND_TIME = (7.0, 10.0)
+LAND_PUSH = 55.0          # Abwind: u/s am Landeplatz
 LANES = ((0.32, -1), (0.74, 1))   # (Tiefe, Fahrtrichtung)
 LANE_HALF = 0.085                 # halbe Spurbreite in Tiefe
+TRAFFIC_REF = 12.0                # Abstand (s), bei dem Fahrzeuge volles Tempo fahren
+TRAFFIC_GAP = 14.0                # Mindestabstand Stoßstange-Stoßstange in der Kolonne (u)
+CAR_BRAKE = 300.0                 # Bremsverzögerung für Fußgänger vor dem Fahrzeug (u/s²)
+CAR_DANGER_SPEED = 42.0           # ab diesem Tempo kann es vorn ernst werden (u/s)
+CAR_BUMP_INVULN = 0.8             # nach einem Rempler kurz geschützt (s)
+PARK_BANDS = ((0.165, 0.75), (0.925, 0.25))   # Parkstreifen (Tiefe, Anteil): hinten / vorn
 OBSTACLE_BANDS = ((0.12, 0.20), (0.45, 0.60), (0.88, 0.97))  # freie Streifen neben den Spuren
 
 # ----------------------------------------------------------------------------------
@@ -159,5 +198,6 @@ POINTS_INSTINCT = 60       # Bonus: Replikant ohne Scan erkannt
 POINTS_CIVILIAN = -250
 POINTS_ESCAPE = -40
 POINTS_BOUNTY = 400        # Kopfgeld-Bonus (zusätzlich zum Replikanten)
+POINTS_ORIGAMI = 250       # Gaffs Origami gefunden (+ Scanner voll)
 COMBO_MAX = 5
 SUSPICION_WATCHED = 1.5    # Faktor, wenn die Polizei-Patrouille dich im Suchlicht hat

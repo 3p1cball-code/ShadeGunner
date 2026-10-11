@@ -30,7 +30,45 @@ ist der Einsatz verloren).
 - **Zonen:** Außenbezirk → Vorstadt → Innenstadt → Hafen → Tyrell.
 - **Abwechslung:** Springen (über Hindernisse, Schlägen ausweichen), Verkehr auf zwei
   Fahrspuren, Polizei-Suchlicht (macht Augenreflexe sichtbar), Stromausfall,
-  Kopfgeld-Replikanten und Ramen-Stände (füllen ein Herz auf).
+  Kopfgeld-Replikanten, **landende Polizei-Spinner** (Abwind schiebt alle weg, danach
+  Kontrolle mit Suchlicht vom Boden aus; der Spinner sperrt den Mittelstreifen),
+  **Gaffs Origami** (eine Figur pro Zone: Huhn, Streichholzmann, Schaf, Kranich, Einhorn;
+  Fund = Punkte + Scanner voll) und **Nudelbars** im Stil des White Dragon (Theke,
+  Gäste, Koch, Neon-Drache; kurz an der Theke stehen füllt ein Herz auf).
+- **Volle Straßen – und jeder ist Teil der Simulation:** Passanten auf der Fahrbahn,
+  Flaneure auf dem hinteren Gehweg vor den Läden und **Gruppen, die herumstehen und
+  reden**. Alle sind beobachtbar und scanbar, Replikanten verstecken sich in jeder Sorte.
+  Schwierigkeit LEICHT/NORMAL/SCHWER skaliert die Menge.
+- **Ansprechen und Rufen (`V`):** Kurz tippen spricht das Ziel an („Sie da! Stehen
+  bleiben!“): Menschen heben die Hände und antworten, wer den REIZ-Tell hat, starrt nur.
+  Halten lädt einen Ruf an die Menge, beim Loslassen läuft „LAPD! Alle runter!“ als
+  sichtbare Welle über die Straße; jeder reagiert, wenn sie ihn erreicht, mit eigener
+  Schrecksekunde. Wer den REIZ-Tell hat, bleibt **reglos stehen**, die anderen gehen **in
+  Deckung** (die Kugel geht über Geduckte hinweg) oder rennen. Jeder Ruf erhöht die
+  **Unruhe** der Straße: mehr Leute rennen, Replikanten werden nervös und hauen ab.
+- **Verkehr wird zur Kolonne:** Mit jedem Viertel fahren mehr Fahrzeuge – und je dichter
+  der Verkehr, desto langsamer fließt er: Stop-and-go, haltende Taxis, Stau-Hupen, in der
+  Innenstadt meist 5–7 Fahrzeuge im Bild. Und je langsamer und voller, desto **leiser**
+  die Motoren. Stehst du in der Spur, hupt der Fahrer und **bremst** ab – angefahren wirst
+  du nur noch, wenn du in letzter Sekunde vors Auto läufst (ganz vorn ist es wirklich
+  gefährlich, im dichten Innenstadtverkehr kaum noch). Läufst du seitlich gegen ein Auto,
+  gibt es nur einen kurzen **Rempler** (Stun), kein Herz. Am Fahrbahnrand **parken** Autos, Taxis, Laster
+  (manche mit Warnblinker); sie sind zu hoch zum Drüberspringen und verdecken, wer
+  dahinter steht.
+- **Dampfende Gullis:** wie in New York – Gullideckel mit Glut im Spalt und gestreifte
+  Dampfschlote, die in Schüben qualmen. Im Dampf sieht man fast nichts: Wer dort steht,
+  lässt sich kaum beobachten.
+- **Eigene Musik je Viertel:** Außenbezirk mit dem Titelthema, danach mit jeder Zone
+  dichter (Arpeggien, Chor, Nebelhorn und Hafenmetall, Tyrell groß und hell). Dazu eine
+  taktgleiche **Rhythmus-Spur** – vom Herzschlag in der Vorstadt bis zum treibenden
+  Sequenzer in Tyrell –, die mit der Spannung lauter wird (Zielen, Unruhe, Flucht,
+  Verdacht, ROY) und langsam wieder abklingt.
+- **Holografische Ballerinas** (Blade Runner 2049): riesige Tänzerinnen über den Dächern
+  und kleine auf Projektorsockeln am Gehweg – Pirouette, Seconde, Arabeske mit Promenade,
+  Scanlines, Aussetzer, Glitches; im Stromausfall gehen sie aus.
+- **Verkehr nach Syd Mead:** Polizei-Spinner mit Kapsel-Kanzel und Radgondeln,
+  Deckard-Sedan, Metrokab mit Glas-Dom, Sebastians Armadillo-Laster, Aerial-Limousine,
+  Stadtbus voller Fahrgäste, Motorrad mit Radscheiben.
 - **Endboss:** In Tyrell tritt **ROY** auf. Er redet seine Sprüche (dabei
   unverwundbar) und verträgt zwischen den Sätzen Treffer. Das Tor öffnet erst,
   wenn er liegt.
@@ -47,6 +85,7 @@ ist der Einsatz verloren).
 | `R` / rechte Maustaste | gewähltes Ziel scannen |
 | `E` / linke Maustaste | halten = zielen, loslassen = schießen |
 | `C` / rechte Maustaste | Schuss abbrechen (Waffe senken) |
+| `V` / mittlere Maustaste | tippen = Ziel ansprechen, halten + loslassen = Ruf „LAPD! Alle runter!“ |
 | `P` Pause · `H` Hilfe · `F` Vollbild · `M` Ton · `S` Einstellungen (Titel/Pause) | |
 
 ## Start

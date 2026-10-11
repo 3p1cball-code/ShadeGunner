@@ -192,7 +192,9 @@ eines Graus — ohne diesen Eintrag ditherte Laternenlicht rot statt orange.
 | Taste | Aktion |
 |---|---|
 | A/D, W/S (Pfeile) | gehen, Tiefe; Shift sprinten |
-| Space / C | springen |
+| Space | springen |
+| V / mittlere Maustaste | Ruf „LAPD! Alle runter!“ (§17) |
+| C / rechte Maustaste (beim Zielen) | Schuss abbrechen |
 | Maus zeigen / klicken | Ziel wählen (Klick = genau diese Figur) |
 | Q / Tab / Mausrad | Ziel wechseln |
 | R / rechte Maustaste | gewähltes Ziel scannen (zu weit = Meldung, kein Umschwenken) |
@@ -246,3 +248,147 @@ Auflösung gesetzt und zentriert; im Vollbild gilt die Bildschirmauflösung. Per
 `config`-unabhängige Werte, live angewandt (Audio-Volumes, CRT-Scan/Maske, Overlay).
 
 ROY (§13) tritt jetzt erst auf, wenn die **Tyrell-Quote erfüllt** ist.
+
+## 16. Blade-Runner-Ausbau: Fahrzeuge, Nudelbar, Spinner-Landung, Origami
+
+**Fahrzeuge (Syd Mead).** Alle Bodenfahrzeuge in `render/vehicles.py` folgen Meads
+Formensprache: verkleidete Räder, überbaute Lichtleisten, nachgerüstete Rohre. Der
+Polizeiwagen ist ein **Spinner** am Boden (Kapsel-Kanzel über dem vorderen Viertel,
+kugelige Radgondeln vor dem Bug, verdecktes Heck, Lichtbalken rot/blau live, roter
+Unterboden). Dieselbe Zeichnung liefert `spinner_image()` für die fliegenden Spinner,
+die Patrouille und die Landung (gecacht pro Pixelgröße/Richtung). Neu: **Bus**
+(Zonen 2–4, Sound wie Laster).
+
+**Nudelbar (White Dragon).** `city._ramen_booth` zeichnet die statische Bude
+(Vordach, Noren, Menü-Täfelchen, Regal, Topf, Wok, Theke, sechs Hocker, Gäste von
+hinten, Plastikvorhänge, Papierlaternen, Neon-Drache + RAMEN-Schild) und entfernt alles
+Lebende der Häuser dahinter. `scene._ramen` lässt sie leben: Lichtpool, Glühbirnen
+(eine mit Wackelkontakt), Koch (winkt, schüttelt das Sieb, reicht die Schale), die
+flackernde rote Drachenzunge, Tropfen vom Vordach, Dampf. Der Hocker in der Mitte ist
+frei – der Koch ruft „IRASSHAI! PLATZ FREI!“ bzw. bei voller Integrität
+„FUTATSU DE JUBUN!“ (zwei reichen).
+
+**Spinner-Landung.** Ab Zone 2 landet eine Patrouille mit `SPINNER_LAND_CHANCE` auf dem
+Mittelstreifen (`LAND_DEPTH`): Anflug → Sinkflug (Abwind schiebt Figuren und Spieler
+weg, Druckringe auf dem Wasserfilm, Gischt) → 7–10 s am Boden (Suchlicht vom Bug,
+gleiche Regeln wie das Luft-Suchlicht: Augenreflexe sichtbar, Fehler kosten 1,5×
+Verdacht; der Spinner ist ein nicht überspringbares Hindernis) → Abheben. Gezeichnet
+wird er tiefensortiert zwischen den Figuren.
+
+**Origami.** Eine Figur pro Zone (eigener Zufallsstrom, ändert die übrige Zone nicht)
+neben der Fahrbahn; blinkt alle 2,4 s kurz auf. Aufheben: +`POINTS_ORIGAMI`, Scanner
+voll. Zonen-Abschluss und Endbildschirm zeigen den Fund (x/5).
+
+## 17. Dichte, Ruf, Hologramme, Musik
+
+**Problem.** Mehr Menschen je Viertel sind der natürliche Schwierigkeitshebel: Der Prior
+(Replikantenanteil) sinkt, Konfidenzen bleiben länger niedrig, Schusslinien sind
+verstellt. Gewollt ist trotzdem ein *ruhiges* Spiel: alle sorgfältig beobachten.
+Deshalb gibt es **keine Deko-Menge** – jede sichtbare Person ist ein Aktor.
+
+**Drei Sorten Passanten** (`procgen.populate`, je Zone `density`/`sidewalk`/`groups`):
+- *Straße:* gehen/stehen über die ganze Tiefe (wie bisher).
+- *Gehweg:* Flaneure im Band `config.SIDEWALK` (Tiefe 0,02–0,09) direkt vor den Läden,
+  also hinter der Spielertiefe – beobachtbar, scanbar, bleiben bei ihrem Band (`home`).
+- *Gruppen:* 2–4 Leute im Kreis (`group`, `gx`), Zustand `loiter` (25–70 s), schauen
+  zur Mitte und gestikulieren (Animation `talk`); danach zerstreuen sie sich.
+Die Replikanten werden über *alle* Specs gezogen – Gruppenmitglied zu sein ist kein Indiz.
+Innenstadt ≈ 127 Aktoren, Simulation ≈ 0,5 ms/Tick.
+
+**Ansprechen (`V` tippen, < 0,3 s).** Nur das Ziel (Reichweite `TALK_RANGE`, CD 2,5 s):
+Menschen drehen sich um und heben die Hände (`hands`), oft mit Antwort; wer den
+**REIZ-Tell** hat, erstarrt (`freeze`, „REGLOS“). Gezielter Teilscan ohne Ladung, aber
+Replikanten fühlen sich eher ertappt (`TALK_ALERT`).
+
+**Ruf an die Menge (`V` halten, loslassen).** Radius wächst mit der Haltezeit
+(`SHOUT_RADIUS` 70→160 in `SHOUT_CHARGE` s; MEGAFON ×1,35, CD halbiert). Der Ruf läuft
+als **Welle** (`SHOUT_SPEED` 240 u/s, als Ring auf dem Asphalt sichtbar); jede Person
+reagiert, wenn die Welle sie erreicht, plus eigener **Schrecksekunde** (`react_t`,
+Ältere langsamer):
+- REIZ-Tell → `freeze` (Tell aufgedeckt; Menschen zeigen ihn mit derselben Likelihood
+  wie im Scan, P(REP) bleibt ehrlich).
+- sonst → `duck` (Kugel geht drüber, `line_of_fire`) oder Flucht.
+- **Unruhe** (`world.unrest`, +0,34 je Ruf, −0,025/s): mehr Menschen rennen statt zu
+  ducken, Geduckte bleiben kürzer unten, Replikanten fühlen sich eher ertappt
+  (`× (1 + 1,5·Unruhe)`). Dauerrufen macht die Straße also unbrauchbar.
+Nach der Welle meldet der Funk die Bilanz („Ruf: 5 in Deckung, 1 reglos, 2 rennen“).
+
+Bot (12 Runs, neue Dichte): mit Ruf 1×Verdacht/11×Zeitlimit, ohne Ruf ebenso – der
+Bot ruft nur bei verstellter Linie und profitiert nach der Unruhe-Regel kaum; er ist
+langsam (Zeitlimit), als Balance-Maß nur grob.
+
+**Schwierigkeit** (Einstellungen): LEICHT/NORMAL/SCHWER = Menge ×0,7/×1,0/×1,4
+(`config.DIFFICULTY`, skaliert alle drei Sorten), gilt ab dem nächsten Einsatz.
+
+**Holografische Ballerinas** (`render/holo.py`). 3D-Skelett, das zwischen Ballettposen
+interpoliert (Vorbereitung, Plié, doppelte Pirouette im Passé, Développé à la seconde,
+Arme en couronne, Arabeske mit Promenade, Révérence; Zyklus 12,4 s) und um die Hochachse
+dreht. Tutu als Scheibe mit mitdrehenden Falten. Gerendert mit 20 Hz in eine eigene
+Textur, Scanline-Maske, Laufband, Aussetzer/Glitch, additiv in Szene und Glow.
+Riesige im Mittel-Layer hinter der Häuserfront, kleine auf Projektorsockeln am Gehweg
+(mit Spiegelung); im Stromausfall fallen sie aus.
+
+**Musik je Zone** (`audio.zone_music`/`zone_pulse`, Cache `music_zN.wav`/`pulse_zN.wav`):
+| Zone | Harmonik | Tempo | Musik | Rhythmus-Spur |
+|---|---|---|---|---|
+| Außenbezirk | Fm9 … (Titelthema) | frei | CS-80-Flächen, Lead, Glocken | – |
+| Vorstadt | Dm9 Bbmaj7 Gm9 A7sus | 90 | + Achtel-Arpeggio | Herzschlag, leiser Shaker |
+| Innenstadt | Ebm9 Bmaj7 Abm9 Bb7sus | 90 | + 16tel-Arpeggio, Chor | Kick, Hats, Achtel-Bass |
+| Hafen | Cm(add9) Abmaj7 Fm9 G7sus | 112,5 | dunkler, Nebelhorn, Metall | + Snare im Hall, Metall, 16tel-Bass |
+| Tyrell | F#m7 Dmaj7 Bm7 C#7 | 90 | voll, hell, Lead in 3 Abschnitten | + Snare, treibender 16tel-Bass |
+Akkordlänge = ganze Zahl Schläge, Musik und Rhythmus haben dieselbe Länge → die
+Rhythmus-Spur startet immer an der Position der Musik und bleibt taktgleich.
+**Spannung** 0..1 (Zielen 0,55, Unruhe, Verdacht, Stromausfall, ROY, fliehender/
+angreifender Replikant = 1) regelt den Rhythmus-Pegel zwischen Ruhe- und Vollwert
+(`PULSE_LEVEL`); schnell rein, langsam raus. Zonenwechsel = 2,5-s-Überblendung; nur die
+aktuelle Spur liegt im Speicher (je ~33 MB float32), alte werden entladen. Erzeugung im
+Hilfsprozess ~60 s zusätzlich, beim ersten Start nach Zone 0 (fehlt eine Spur noch,
+läuft die bisherige weiter). `DONE_TAG` erzwingt das Nachbauen auf alten Caches.
+
+## 18. Verkehr, Parker, Dampf: es wird immer dichter
+
+**Ziel.** Von Zone zu Zone mehr Gewimmel, bis man (wie im Film) die Übersicht verliert –
+gewollt, kein Balancing-Fehler.
+
+**Verkehr** (`sim._update_traffic`). Zonenwert `traffic` = mittlerer Abstand in s
+(12 → 6,5 → 2,4 → 2,1 → 1,8), geteilt durch die Schwierigkeits-Dichte. Tempo-Faktor
+`traffic_slow = clamp((gap / TRAFFIC_REF)^0,55, 0,35, 1)`: dichter Verkehr fährt langsamer
+(Innenstadt ≈ 0,41 → ~55–75 u/s statt 170). Je Spur Kolonne: wer aufläuft, bremst auf das
+Tempo des Vordermanns (Abstand `TRAFFIC_GAP + 0,9·vmax`), Stop-and-go durch haltende Taxis
+und Parkplatzsucher. Wer >1,5 s steckt, hupt (`jam_honk`, leiser). Dichte Zonen starten
+mit gefüllten Spuren (`_prefill_traffic`). Langsame Fahrzeuge (< 25 u/s) fahren niemanden
+an. Anfahrtsgeräusch erst ~2,5 s vor der Kamera, höchstens 3 gleichzeitig.
+
+**Parker** (`procgen.parked`, `parked` je 1000 u: 1,5 → 7). Feste Hindernisse
+(`kind="parked"`, `veh`, `dir`) auf dem hinteren Parkstreifen (75 %) oder vorn an der
+Kamera (25 %, verdeckt Sicht). Höhe = Fahrzeughöhe → nicht springbar; fliehende
+Replikanten springen nur über Hindernisse < 13 u. Lichter gedimmt, 25 % Warnblinker,
+geparkte Polizei mit Lichtbalken. Passanten, die beim Start in einem Parker stünden,
+werden daneben gestellt (`_unstick`).
+
+**Dampf** (`procgen.manholes`, `steam` je 1000 u: 1 → 3,2). Gullis auf/zwischen den Spuren,
+30 % als gestreifter Con-Ed-Schlot (kleines Hindernis). Stärke atmet langsam, dazu
+zufällige Schübe (alle 9–22 s). Gezeichnet als aufsteigende, wachsende, abdriftende
+Ballen; unten hell und leicht emissiv (fängt Neon). **Spielwirkung:** `steam_at(x, d)` –
+Beobachtung im Dampf bis zu 75 % langsamer.
+
+**Leistung.** Hindernisse in einem x-Raster (`_obs_near`, 64-u-Zellen) – sonst kosten die
+vielen Parker die Kollisionsabfragen; Innenstadt-Sim ≈ 0,85 ms. Szene je Zone
+13–19 ms (CPU, 640×360).
+
+**Fahrzeuge bremsen für Fußgänger** (`sim._update_traffic`). Steht der Spieler in der Spur
+und vor dem Fahrzeug, bremst es mit `CAR_BRAKE` bis zum Stillstand (Bremsweg =
+´sqrt(2·B·Restweg)`, Reaktion `react` je Fahrzeug: früh/nah langsamer, also gefährlicher).
+Dabei hupt es (erneut alle 1,5 s). Frontale Berührung kostet nur noch mit Tempo über
+`CAR_DANGER_SPEED` ein Herz; dann gibt es zusätzlich eine Rettungschance `World.car_escape`
+(0,35 früh, 0,6 ab Innenstadt) – der Fahrer reißt in letzter Sekunde das Steuer herum,
+hupt und du bekommst nur einen Rempler. Seitlich/stehend gerammt = `_car_bump`: kurzer
+Stun (`hurt`, 0,3 s), Rückstoß, aus der Spur geschoben, **kein** Herzverlust, kurze
+Schutzzeit (`CAR_BUMP_INVULN`). So ist der Verkehr früh schnell und gefährlich, ab der
+Innenstadt vor allem ein Sicht- und Übersichtsproblem.
+
+**Motorlautstärke** (`events "vehicle"` trägt einen Faktor). `vs = speed/170`,
+`density_k = min(1, 3/N)` mit N = Fahrzeuge im Bild; leiser bei langsamem und dichtem
+Verkehr (Außenbezirk ≈ 0,96, Innenstadt ≈ 0,19). Höchstens 4 Vorbeifahrten gleichzeitig.
+Hupe lauter (`VOLUME["honk"] = 0,55`), neuer Rempler-Sound `bump`.
+

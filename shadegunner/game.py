@@ -32,6 +32,7 @@ CONFIRM = {K.Key_Return, K.Key_Enter, K.Key_Space}
 SCAN_KEYS = {K.Key_R}
 JUMP_KEYS = {K.Key_Space}
 CANCEL_KEYS = {K.Key_C}
+SHOUT_KEYS = {K.Key_V}
 
 
 class _GameMixin:
@@ -41,7 +42,7 @@ class _GameMixin:
     SoftwareGameWidget (QWidget + CPU-Dither). Nur die Darstellung unterscheidet sich.
     """
 
-    _SETTING_KEYS = ["music", "sfx", "fullscreen", "resolution", "scanlines", "renderer"]
+    _SETTING_KEYS = ["music", "sfx", "fullscreen", "resolution", "scanlines", "renderer", "difficulty"]
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -65,6 +66,7 @@ class _GameMixin:
         self.renderer = None
         self.keys = set()
         self.mouse_aim = False
+        self.mouse_mid = False
         self.mouse_scene = None     # Mausposition in Szenen-Pixeln (640x360), None = außerhalb
         self.mouse_t = 99.0         # Sekunden seit der letzten Mausbewegung
         self._mouse_moved = False
@@ -103,7 +105,7 @@ class _GameMixin:
 
     def _start_run(self):
         seed = random.randrange(1 << 16)
-        self.run = Run(seed)
+        self.run = Run(seed, self.settings.get("difficulty", "normal"))
         self.world = World(self.run, seed=seed, zone_index=0)
         self.scene.ensure_zone(0, seed, self.world.length)
         self._set_mode("intro")
@@ -223,7 +225,8 @@ class _GameMixin:
         self._mouse_moved = False
         inp = dict(move=(mx, md), sprint=bool(ks & SPRINT), aim=bool(ks & AIM_KEYS) or self.mouse_aim,
                    scan=self._edge.get("scan", False), cycle=self._edge.get("cycle", 0),
-                   jump=self._edge.get("jump", False), cancel=self._edge.get("cancel", False))
+                   jump=self._edge.get("jump", False), cancel=self._edge.get("cancel", False),
+                   shout=bool(ks & SHOUT_KEYS) or self.mouse_mid)
         w.update(dt, inp)
         if w.state == "zone_clear" and self.mode_t > 0:
             self._set_mode("cleared")
@@ -296,6 +299,11 @@ class _GameMixin:
         elif key == "scanlines":
             s["scanlines"] = not s["scanlines"]
             self._apply_scanlines()
+        elif key == "difficulty":
+            order = config.DIFFICULTY_ORDER
+            cur = s.get("difficulty", "normal")
+            i = order.index(cur) if cur in order else 1
+            s["difficulty"] = order[(i + (1 if d > 0 else -1)) % len(order)]
         elif key == "renderer":
             s["renderer"] = "software" if s.get("renderer") != "software" else "auto"
         settings.save(s)
@@ -434,6 +442,8 @@ class _GameMixin:
                     self._edge["cancel"] = True
                 else:
                     self._edge["scan"] = True
+            elif e.button() == Qt.MouseButton.MiddleButton:
+                self.mouse_mid = True
         elif self.mode == "title" and e.button() == Qt.MouseButton.LeftButton:
             self.audio.play("ui")
             self._transition(self._start_run)
@@ -445,6 +455,8 @@ class _GameMixin:
     def mouseReleaseEvent(self, e):
         if e.button() == Qt.MouseButton.LeftButton:
             self.mouse_aim = False
+        elif e.button() == Qt.MouseButton.MiddleButton:
+            self.mouse_mid = False
 
     def mouseMoveEvent(self, e):
         sp = self._scene_pos(e.position())
