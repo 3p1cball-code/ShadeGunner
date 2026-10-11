@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo.png" alt="ShadeGunner" width="100%"></p>
+
 # ShadeGunner
 
 **English** · [Deutsch](README.de.md)
@@ -30,6 +32,11 @@ Observe → pick a target → **scan** (limited charges) → **tell confidence**
 (passers-by in the line of fire catch the bullet) → meet the quota, the exit
 opens → 1 of 3 upgrades. **Killing civilians ⇒ suspicion** (at 100 % the run is
 lost).
+
+When you catch an **eye reflex** – by watching, scanning, under a police
+searchlight or in a blackout – the game's emblem (an eye in the scanner
+reticle) flashes up above that person. It marks the tell, not the truth:
+humans occasionally show a false reflex too.
 
 - **Zones:** Outskirts → Suburbs → Downtown → Harbor → Tyrell.
 - **Variety:** jumping (over obstacles, dodging blows), traffic on two lanes,
@@ -107,6 +114,9 @@ pip install -r requirements.txt
 python3 -m shadegunner            # or: tools/run.sh
 ```
 
+Menu entry with icon (Linux, per user, no root): `tools/install_desktop.sh`
+(remove with `--uninstall`).
+
 On first launch the soundtrack is generated once (~11 s) into
 `~/.cache/shadegunner/audio-v2/`; after that it starts immediately.
 To disable: `SHADEGUNNER_NOSOUND=1`.
@@ -153,6 +163,9 @@ under `%LOCALAPPDATA%\shadegunner\`.
 - `tools/playtest.py` – end-to-end with the real `GameWidget`
 - `tools/autoplay.py` – balancing bot
 - `tools/spritesheet.py` – sprite overview
+- `tools/make_brand.py` – icon (`assets/icons/`, PNG 16–512 + `.ico`), logo and
+  GitHub social preview, generated from code through the game's own
+  dither/CRT chain (the logo background is a real game scene)
 
 ## License
 

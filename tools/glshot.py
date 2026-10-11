@@ -7,6 +7,7 @@ Aufruf: python3 tools/glshot.py [out.png] [zone] [seed] [frames] [--raw] [--hud]
   --hud   HUD wie im Spiel einblenden
   --aim   Spieler zielt in den letzten Frames (Laservisier)
   --scan  Spieler scannt in den letzten Frames
+  --eye   Augenreflex bei einem Replikanten erkennen (HUD-Emblem überm Kopf)
 """
 
 import os
@@ -19,7 +20,7 @@ from PyQt6.QtGui import (QGuiApplication, QOffscreenSurface, QOpenGLContext,  # 
                          QSurfaceFormat)
 from PyQt6.QtOpenGL import QOpenGLFramebufferObject  # noqa: E402
 
-from shadegunner import config  # noqa: E402
+from shadegunner import config, persp  # noqa: E402
 from shadegunner.render.glrender import CRTRenderer, GLFuncs  # noqa: E402
 from shadegunner.render.scene import Scene  # noqa: E402
 from shadegunner.sim import World  # noqa: E402
@@ -126,6 +127,14 @@ def main():
         mv = 0.0 if "--still" in flags else (0.6 if not late else 0.0)
         if "--shout" in flags and i == int(frames * 0.6):
             world.shout_crowd()
+        if "--eye" in flags and i == frames - 30:
+            # Augenreflex beim nächsten Replikanten mit Pupillen-Tell (HUD-Emblem zeigen)
+            cand = [a for a in world.living() if a.tells.get("pupils") and "pupils" not in a.revealed
+                    and 60 < persp.screen_x(a.x, a.depth, world.camera_x) < config.RENDER_W - 60]
+            if cand:
+                a = min(cand, key=lambda a: abs(a.x - world.player.x))
+                world.target = a
+                world._glint_seen(a, "AUGENREFLEX!", 1e9)
         inp = dict(move=(mv, 0.0),
                    aim=late and "--aim" in flags,
                    scan=(i == int(frames * 0.6) + 1) and "--scan" in flags)

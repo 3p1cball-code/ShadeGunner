@@ -11,7 +11,7 @@ import math
 from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtGui import QColor, QImage, QPainter, QPen
 
-from . import config, i18n, persp
+from . import assets, config, i18n, persp
 from .detection import ORDER, TELLS
 from .i18n import tr
 from .render import pixfont
@@ -25,6 +25,11 @@ TEAL, CYAN, MAGENTA, AMBER, VIOLET = C[11], C[12], C[13], C[14], C[15]
 SLATE = (112, 118, 132)   # HUD-Grau (Palette 7 ist jetzt Natrium-Orange)
 RED = (240, 70, 90)
 GREEN = (90, 230, 140)
+
+# Augenreflex-Emblem über dem Kopf: 32er Icon, nearest x HUD_SCALE (= Spielpixelraster)
+EYE_ICON = 32
+EYE_PX = EYE_ICON * S
+EYE_LIFE = 2.4             # Sekunden sichtbar
 
 
 def conf_color(c):
@@ -65,6 +70,8 @@ class HUD:
         self._log_len = 0
         self._log_ref = None
         self._dt = 1 / 60
+        self._eye_seen = {}        # uid -> HUD-Zeit, als der Augenreflex erkannt wurde
+        self._eye_world = None
 
     # ------------------------------------------------------------------ Grundformen
     def _box(self, p, x, y, w, h, border=STEEL, fill=(6, 8, 14), alpha=215):
@@ -195,15 +202,59 @@ class HUD:
         if b is not None and b is not tg:
             cx, gy, h = self._scr(scene, b, world)
             self._t(p, cx, gy - h * 1.05 - 26, "IN DER LINIE!", AMBER, 2, "center")
-        # Schwebende Texte
+        # Augenreflex erkannt -> Emblem taucht über dem Kopf auf
+        eyes = self._eye_marks(p, world, scene)
+        # Schwebende Texte (über einem aktiven Emblem nach oben ausweichen)
         for f in world.floaters:
             k = f["t"] / f["life"]
             cx = persp.screen_x(f["x"], f["depth"], world.camera_x) * S
             gy = persp.ground_y(f["depth"]) * S
             h = persp.figure_h(f["depth"]) * S
             y = gy - h * 1.15 - 40 - 36 * k - 20 * f.get("slot", 0)
+            if f["uid"] in eyes:
+                y -= EYE_PX + 8
             op = 1.0 if k < 0.7 else max(0.0, 1 - (k - 0.7) / 0.3)
             self._t(p, cx, y, f["text"], f["color"], 2, "center", op)
+
+    def _eye_marks(self, p, world, scene):
+        """Spiel-Emblem (Auge im Fadenkreuz) über Personen, bei denen gerade ein
+        Augenreflex erkannt wurde - egal auf welchem Weg (Beobachtung, Scan,
+        Suchlicht, Stromausfall). Es zeigt den *Tell*, nicht die Wahrheit: auch ein
+        Mensch kann einen falschen Augenreflex haben, die Konfidenz bleibt ehrlich.
+
+        Ablauf: einblitzen (CRT-Flackern), stehen, ausflackern. Gibt die uids mit
+        sichtbarem Emblem zurück."""
+        if self._eye_world is not world:          # neue Zone / neuer Run
+            self._eye_world = world
+            self._eye_seen = {a.uid: -EYE_LIFE for a in world.actors
+                              if "pupils" in a.revealed and a.tells.get("pupils")}
+        img = assets.emblem(EYE_ICON, S)
+        shown = set()
+        for a in world.actors:
+            if a.player or not a.alive or a.escaped:
+                continue
+            if "pupils" not in a.revealed or not a.tells.get("pupils"):
+                continue
+            t0 = self._eye_seen.setdefault(a.uid, self.t)
+            age = self.t - t0
+            if age >= EYE_LIFE or img is None:
+                continue
+            cx, gy, h = self._scr(scene, a, world)
+            if cx < -EYE_PX or cx > HW + EYE_PX:
+                continue
+            shown.add(a.uid)
+            # einblitzen / ausflackern wie eine Röhre, die zündet bzw. verlischt
+            if age < 0.16 and int(age * 40) % 2:
+                continue
+            out = age - (EYE_LIFE - 0.45)
+            if out > 0 and int(out * 24) % 3 == 0:
+                continue
+            x = int(cx - EYE_PX / 2)
+            y = int(gy - h * 1.02 - 38 - EYE_PX)
+            if age < 0.05:                        # Zündblitz: kurz weiß hinterlegt
+                p.fillRect(QRectF(x + 6, y + 6, EYE_PX - 12, EYE_PX - 12), QColor(*WHITE))
+            p.drawImage(x, y, img)
+        return shown
 
     # ------------------------------------------------------------------ Ereignisse / Warnungen
     def _events(self, p, world):

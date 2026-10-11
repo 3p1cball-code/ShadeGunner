@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo.png" alt="ShadeGunner" width="100%"></p>
+
 # ShadeGunner
 
 [English](README.md) · **Deutsch**
@@ -30,6 +32,11 @@ Beobachten → Ziel wählen → **scannen** (begrenzte Ladungen) → **Tell-Konf
 zielen/schießen (Passanten in der Schusslinie fangen die Kugel) → Quote erfüllen,
 Ausgang öffnet sich → 1 aus 3 Upgrades. **Zivilisten töten ⇒ Verdacht** (ab 100 %
 ist der Einsatz verloren).
+
+Wer einen **Augenreflex** erwischt – beim Beobachten, per Scan, im Polizei-
+Suchlicht oder beim Stromausfall –, sieht über der Person kurz das Emblem des
+Spiels aufblitzen (Auge im Scanner-Fadenkreuz). Es markiert den Tell, nicht die
+Wahrheit: Auch Menschen zeigen gelegentlich einen falschen Reflex.
 
 - **Zonen:** Außenbezirk → Vorstadt → Innenstadt → Hafen → Tyrell.
 - **Abwechslung:** Springen (über Hindernisse, Schlägen ausweichen), Verkehr auf zwei
@@ -104,6 +111,9 @@ pip install -r requirements.txt
 python3 -m shadegunner            # oder: tools/run.sh
 ```
 
+Menü-Eintrag mit Icon (Linux, pro Benutzer, ohne root): `tools/install_desktop.sh`
+(entfernen mit `--uninstall`).
+
 Beim ersten Start wird der Soundtrack einmalig (~11 s) nach
 `~/.cache/shadegunner/audio-v2/` erzeugt; danach startet es sofort.
 Abschalten: `SHADEGUNNER_NOSOUND=1`.
@@ -150,3 +160,6 @@ Klang-Cache unter `%LOCALAPPDATA%\shadegunner\`.
 - `tools/playtest.py` – End-to-End mit echtem `GameWidget`
 - `tools/autoplay.py` – Balancing-Bot
 - `tools/spritesheet.py` – Sprite-Übersicht
+- `tools/make_brand.py` – Icon (`assets/icons/`, PNG 16–512 + `.ico`), Logo und
+  GitHub-Social-Preview, aus dem Code erzeugt durch die eigene Dither-/CRT-Kette
+  des Spiels (der Logo-Hintergrund ist eine echte Spielszene)

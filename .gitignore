@@ -8,6 +8,9 @@ shots/
 # Screenshots bleiben im Repo (Ausnahme von *.png oben)
 !screenshots/
 !screenshots/**
+# Icon, Logo, Social Preview (erzeugt von tools/make_brand.py)
+!assets/
+!assets/**
 
 # Build-Artefakte (PyInstaller / Auslieferung)
 dist/

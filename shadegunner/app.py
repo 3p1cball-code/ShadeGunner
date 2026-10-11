@@ -3,11 +3,21 @@
 import os
 import sys
 
-from PyQt6.QtGui import QSurfaceFormat
+from PyQt6.QtGui import QIcon, QSurfaceFormat
 from PyQt6.QtWidgets import QApplication
 
-from . import settings
+from . import assets, settings
 from .game import GameWidget, SoftwareGameWidget
+
+
+def app_icon():
+    """Fenster-/Taskleisten-Icon in allen vorhandenen Größen (erzeugt von tools/make_brand.py)."""
+    icon = QIcon()
+    for s in assets.ICON_SIZES:
+        f = assets.icon_path(s)
+        if f:
+            icon.addFile(f)
+    return icon
 
 
 def _set_gl_format():
@@ -56,6 +66,10 @@ def main():
     cfg = settings.load()
     fullscreen = ("--fullscreen" in sys.argv) or bool(cfg.get("fullscreen"))
     app = QApplication(sys.argv)
+    app.setApplicationName("ShadeGunner")
+    # Wayland: app_id = Name der .desktop-Datei -> Plasma zeigt deren Icon in der Taskleiste
+    app.setDesktopFileName("shadegunner")
+    app.setWindowIcon(app_icon())
 
     software = _want_software() or cfg.get("renderer") == "software" or not _probe_gl()
     if software:

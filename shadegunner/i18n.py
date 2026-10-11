@@ -99,6 +99,7 @@ TR = {
     "UNAUFFÄLLIG": "NORMAL",
     "? SCAN": "? SCAN",
     "? BEOBACHTEN": "? OBSERVE",
+    "? NAHSCAN": "? CLOSE SCAN",
     "NAHSCAN": "CLOSE SCAN",
     "P(REP)": "P(REP)",
     "PUPILLE": "PUPIL",

@@ -14,7 +14,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('assets/icons', 'assets/icons')],   # Fenster-Icon (shadegunner/app.py)
     hiddenimports=[],
     hookspath=[],
     excludes=['tkinter', 'PyQt6.QtQuick', 'PyQt6.QtQml', 'PyQt6.QtWebEngineCore'],
@@ -33,6 +33,7 @@ exe = EXE(
     strip=False,
     upx=False,
     console=False,          # kein Konsolenfenster
+    icon='assets/icons/shadegunner.ico',   # Explorer/Taskleiste (tools/make_brand.py)
     disable_windowed_traceback=False,
 )
 coll = COLLECT(
