@@ -113,7 +113,10 @@ To disable: `SHADEGUNNER_NOSOUND=1`.
 
 ## Windows
 
-Two ways:
+**Download:** a ready-to-run build is on the [Releases page](https://github.com/3p1cball-code/ShadeGunner/releases/latest) –
+unzip `ShadeGunner-win.zip` and start `ShadeGunner\ShadeGunner.exe` (no Python needed).
+
+Or build it yourself, two ways:
 
 1. **From source** – run `install.bat` once (installs PyQt6 and numpy), then
    start with `tools\run.bat`.
