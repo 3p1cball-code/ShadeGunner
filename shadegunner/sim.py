@@ -1043,6 +1043,10 @@ class World:
                         v["speed"] = min(v["speed"], ld["speed"])
                 acc = 70.0 if goal > v["speed"] else 240.0
                 v["speed"] += max(-acc * dt, min(acc * dt, goal - v["speed"]))
+                # dichter Verkehr: hier und da ein genervtes Meep (nur im Bild)
+                if self.traffic_slow < 0.7 and v["speed"] > 18 and abs(v["x"] - self.camera_x) < 340 \
+                        and rng.random() < dt * 0.045:
+                    self.events.append(("jam_honk", v["kind"], v["x"] - self.camera_x))
                 # Stau: wer lange steckt, hupt (nur im Bild)
                 if vmax > 0 and v["speed"] < vmax * 0.4:
                     v["slow_t"] = v.get("slow_t", 0.0) + dt
@@ -1078,7 +1082,7 @@ class World:
                 # anhupe, wenn ich in der Spur stehe (auch seitlich / halb davor)
                 if (abs(p.depth - lane) < config.LANE_HALF + 0.035 and v["speed"] > 12
                         and -v["L"] < ahead < max(v["speed"], 45.0) * 1.5 + v["L"] and v["honk_cd"] <= 0.0):
-                    v["honk_cd"] = 1.5
+                    v["honk_cd"] = 2.0
                     self.events.append(("honk", v["kind"]))
                 if in_lane and abs(p.x - v["x"]) < v["L"] * 0.5 + 3 and p.z < v["h"] * 0.75:
                     if ahead > 0.0 and v["speed"] > config.CAR_DANGER_SPEED:

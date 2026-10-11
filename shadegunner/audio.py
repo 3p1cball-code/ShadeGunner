@@ -26,7 +26,7 @@ from array import array
 SR = 22050
 MSR = 32000            # Abtastrate Musik/Stereo
 VERSION = "audio-v2"
-DONE_TAG = "ok-zones1"     # ändern, wenn neue Klänge dazukommen -> Hilfsprozess baut nach
+DONE_TAG = "ok-horn1"     # ändern, wenn neue Klänge dazukommen -> Hilfsprozess baut nach
 
 
 def cache_dir():
@@ -90,6 +90,23 @@ def sfx_beeps(freqs, dur=0.07, gap=0.03, vol=0.45, wave_="sine"):
             s = math.sin(ph) if wave_ == "sine" else (1.0 if math.sin(ph) > 0 else -1.0) * 0.5
             out.append(s * vol * math.exp(-t * 18) * _env(i, n, 0.003))
         out.extend([0.0] * int(SR * gap))
+    return out
+
+
+def sfx_horn(freqs=(382, 466), dur=0.42, vol=0.55):
+    """Autohupe: zwei dicht benachbarte Rechteck-Töne (Schwebung), gehaltener Klang
+    statt kurzem Blip, weicher An-/Absatz."""
+    n = int(SR * dur)
+    out = []
+    for i in range(n):
+        t = i / SR
+        s = 0.0
+        for f in freqs:
+            s += 1.0 if math.sin(2 * math.pi * f * t) > 0 else -1.0
+        s /= len(freqs)
+        s *= 1.0 + 0.03 * math.sin(2 * math.pi * 5.5 * t)        # leichtes Flattern
+        s += 0.25 * math.sin(2 * math.pi * freqs[0] * 0.5 * t)   # Unteroktave fuer Volumen
+        out.append(s * vol * _env(i, n, 0.008, 0.09))
     return out
 
 
@@ -219,7 +236,8 @@ BASIC = {
     "tough": lambda: sfx_beeps((1480, 1110), 0.05, 0.0, 0.45, "square"),
     "leap": lambda: sfx_noise_burst(0.35, 0.18, 7, 0.45, seed=23),
     "car_hit": lambda: sfx_noise_burst(0.6, 0.05, 6, 0.9, seed=24, thump=1.0, f_thump=48),
-    "honk": lambda: sfx_beeps((311, 247), 0.22, 0.03, 0.5, "square"),
+    "honk": lambda: sfx_horn(),
+    "honk_meep": lambda: sfx_horn((470, 560), 0.17, 0.5),
     "bump": lambda: sfx_noise_burst(0.18, 0.12, 18, 0.5, seed=25, thump=0.5, f_thump=90),
     "bounty": lambda: sfx_beeps((392, 494, 587, 784), 0.12, 0.0, 0.45),
     "ramen": lambda: sfx_beeps((523, 659, 784, 1046), 0.1, 0.02, 0.42),
@@ -857,7 +875,7 @@ def _lazy(name):
     return name.startswith("music_z") or name.startswith("pulse_z")
 VOLUME = {"music": 0.5, "rain": 0.16, "target": 0.25, "ui": 0.4, "shot": 0.55, "spinner_lr": 0.45,
           "spinner_rl": 0.45, "car_lr": 0.38, "car_rl": 0.38, "truck_lr": 0.45, "truck_rl": 0.45,
-          "bike_lr": 0.35, "bike_rl": 0.35, "patrol": 0.45, "thunder": 0.6, "honk": 0.55, "bump": 0.45,
+          "bike_lr": 0.35, "bike_rl": 0.35, "patrol": 0.45, "thunder": 0.6, "honk": 0.75, "honk_meep": 0.5, "bump": 0.45,
           "jump": 0.3,
           "land": 0.3, "scan": 0.4, "alert": 0.4}
 
@@ -1315,7 +1333,7 @@ class Audio:
             elif k == "bump":
                 self.play("bump")
             elif k == "jam_honk":
-                self.play("honk", VOLUME["honk"] * 0.5)
+                self.play("honk_meep", VOLUME["honk_meep"] * 0.8)
             elif k == "vehicle":
                 kind, d = ev[1], ev[2]
                 vol = ev[3] if len(ev) > 3 else 1.0     # leiser bei langsamer/dichter Fahrt
