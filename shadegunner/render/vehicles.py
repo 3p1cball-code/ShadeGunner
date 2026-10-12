@@ -25,7 +25,8 @@ VEH_SCALE = 1.5    # Zeichnung in 2/3-Einheiten, Welt-Maße in sim.VEHICLES
 # überbaute Lichtleisten, verkleidete Räder, nachgerüstete Rohre und Lüftungen.
 BODY = {
     "car": [(40, 46, 64), (64, 36, 46), (36, 58, 64), (78, 80, 92), (58, 50, 40),
-            (52, 60, 96), (46, 66, 58), (70, 52, 74), (30, 36, 52), (86, 60, 52)],
+            (52, 60, 96), (46, 66, 58), (70, 52, 74), (30, 36, 52), (86, 60, 52),
+            (96, 84, 60), (58, 72, 84), (44, 40, 56), (72, 84, 68)],
     "taxi": [(196, 150, 52), (186, 120, 40), (206, 168, 74), (168, 132, 50), (120, 140, 150), (150, 158, 90)],
     "police": [(70, 82, 104)],
     "truck": [(70, 66, 62), (78, 52, 40), (52, 64, 76), (64, 72, 54), (84, 74, 58), (56, 58, 70)],
@@ -42,7 +43,7 @@ LIVERY = ["TYRELL", "SHIMATA", "PAN AM", "OFF-WORLD", "NEXUS 6", "EYE WORKS",
 BUS_OP = ["OFF-WORLD", "SHIMATA", "TYRELL", "PAN AM", "KOBAYASHI"]
 BUS_ROUTE = ["4 CHINATOWN", "12 HADES", "9 SECTOR 4", "7 DNA ROW", "2 OFF-WORLD", "11 TYRELL", "6 EYE WORKS"]
 TAXI_SIGN = ["TAXI", "CAB", "TAXI", "METRO", "TAXI"]
-VARIANTS = 16      # unterscheidbare Varianten je Fahrzeugart (Cache-Schlüssel)
+VARIANTS = 32      # unterscheidbare Varianten je Fahrzeugart (Cache-Schlüssel)
 HEAD = (255, 250, 230)
 TAIL = (240, 40, 70)
 WIN = (24, 34, 58)

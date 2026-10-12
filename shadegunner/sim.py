@@ -31,12 +31,12 @@ ZONES = [
          traffic=12.0, parked=1.5, steam=1.0, patrol=None, blackout=0.0),
     dict(name="Vorstadt",    length=2300, density=2.0, sidewalk=1.0, groups=0.30, replicants=6, quota=3, camo=0.25, aggression=0.15, flee=0.5,
          traffic=5.0, parked=3.0, steam=1.6, patrol=55.0, blackout=0.5),
-    dict(name="Innenstadt",  length=2600, density=2.5, sidewalk=1.4, groups=0.38, replicants=8, quota=4, camo=0.5, aggression=0.3, flee=0.55,
-         traffic=2.4, parked=5.5, steam=2.6, patrol=40.0, blackout=0.6),
-    dict(name="Hafen",       length=2400, density=2.1, sidewalk=1.1, groups=0.32, replicants=8, quota=5, camo=0.7, aggression=0.5, flee=0.6,
-         traffic=2.1, parked=6.5, steam=3.0, patrol=45.0, blackout=0.8),
-    dict(name="Tyrell",      length=2300, density=2.3, sidewalk=1.2, groups=0.26, replicants=9, quota=5, camo=0.9, aggression=0.65, flee=0.6,
-         traffic=1.8, parked=7.0, steam=3.2, patrol=30.0, blackout=0.5),
+    dict(name="Innenstadt",  length=2600, density=2.8, sidewalk=1.6, groups=0.44, replicants=9, quota=4, camo=0.5, aggression=0.3, flee=0.55,
+         traffic=2.9, parked=5.5, steam=2.6, patrol=40.0, blackout=0.6),
+    dict(name="Hafen",       length=2400, density=2.4, sidewalk=1.3, groups=0.38, replicants=9, quota=5, camo=0.7, aggression=0.5, flee=0.6,
+         traffic=2.7, parked=6.5, steam=3.0, patrol=45.0, blackout=0.8),
+    dict(name="Tyrell",      length=2300, density=2.6, sidewalk=1.4, groups=0.32, replicants=10, quota=5, camo=0.9, aggression=0.65, flee=0.6,
+         traffic=2.4, parked=7.0, steam=3.2, patrol=30.0, blackout=0.5),
 ]
 
 # Kopfgeld-Replikanten (Nexus-6 aus der Akte) je Zone
@@ -56,11 +56,11 @@ ZONE_PARKED = [
     ["limo", "car", "limo", "police"],
 ]
 ZONE_TRAFFIC = [
-    ["truck", "car", "car", "bike"],
-    ["car", "car", "taxi", "bike", "police", "bus"],
-    ["taxi", "taxi", "car", "bike", "police", "car", "bus"],
-    ["truck", "truck", "car", "bike", "bus"],
-    ["limo", "police", "car", "limo"],
+    ["car", "car", "car", "taxi", "bike", "truck"],
+    ["car", "car", "car", "taxi", "taxi", "bike", "police", "truck", "bus"],
+    ["car", "car", "car", "taxi", "taxi", "car", "bike", "police", "truck", "bus"],
+    ["car", "car", "car", "taxi", "car", "bike", "truck", "police", "bus"],
+    ["car", "car", "car", "taxi", "limo", "car", "police", "truck"],
 ]
 
 # Gaffs Origami: eine Figur pro Zone, versteckt neben der Fahrbahn
@@ -975,6 +975,9 @@ class World:
     def _new_vehicle(self, lane, dr, x=None):
         rng = self.rng
         kind = rng.choice(ZONE_TRAFFIC[self.zone_index % len(ZONE_TRAFFIC)])
+        if kind == "bus" and any(v["kind"] == "bus" and abs(v["x"] - self.camera_x) < 900
+                                for v in self.vehicles):       # keine Bus-Kolonne
+            kind = "car"
         L, h, sp = VEHICLES[kind]
         sp *= rng.uniform(0.9, 1.15) * self.traffic_slow
         if x is None:
@@ -1046,12 +1049,12 @@ class World:
                 v["speed"] += max(-acc * dt, min(acc * dt, goal - v["speed"]))
                 # dichter Verkehr: hier und da ein genervtes Meep (nur im Bild)
                 if self.traffic_slow < 0.7 and v["speed"] > 18 and abs(v["x"] - self.camera_x) < 340 \
-                        and rng.random() < dt * 0.045:
+                        and rng.random() < dt * 0.018:
                     self.events.append(("jam_honk", v["kind"], v["x"] - self.camera_x))
                 # Stau: wer lange steckt, hupt (nur im Bild)
                 if vmax > 0 and v["speed"] < vmax * 0.4:
                     v["slow_t"] = v.get("slow_t", 0.0) + dt
-                    if v["slow_t"] > 1.5 and rng.random() < dt * 0.6 and abs(v["x"] - self.camera_x) < 330:
+                    if v["slow_t"] > 1.5 and rng.random() < dt * 0.25 and abs(v["x"] - self.camera_x) < 330:
                         self.events.append(("jam_honk", v["kind"], v["x"] - self.camera_x))
                         v["slow_t"] = 0.0
                 else:
@@ -1083,7 +1086,7 @@ class World:
                 # anhupe, wenn ich in der Spur stehe (auch seitlich / halb davor)
                 if (abs(p.depth - lane) < config.LANE_HALF + 0.035 and v["speed"] > 12
                         and -v["L"] < ahead < max(v["speed"], 45.0) * 1.5 + v["L"] and v["honk_cd"] <= 0.0):
-                    v["honk_cd"] = 2.0
+                    v["honk_cd"] = 2.8
                     self.events.append(("honk", v["kind"]))
                 if in_lane and abs(p.x - v["x"]) < v["L"] * 0.5 + 3 and p.z < v["h"] * 0.75:
                     if ahead > 0.0 and v["speed"] > config.CAR_DANGER_SPEED:

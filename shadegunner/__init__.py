@@ -4,4 +4,4 @@ Engine-Renderpfad aus `asciiplay`: Bayer-Ordered-Dithering gegen eine feste
 Palette + CRT-Postprocessing. Siehe DESIGN.md.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
