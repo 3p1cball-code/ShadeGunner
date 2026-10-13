@@ -17,13 +17,15 @@ from PyQt6.QtGui import (QBrush, QColor, QImage, QLinearGradient, QPainter, QPen
                          QPolygonF, QRadialGradient)
 
 from .. import config, persp, procgen
-from . import pixfont
+from . import pixfont, props
 
 C = config.NOIR16
 VOID, NIGHT, NAVY, INDIGO, BLUE, STEEL = C[0], C[1], C[2], C[3], C[4], C[5]
-CRIMSON, SODIUM, ASH, PALE, WHITE = C[6], C[7], C[8], C[9], C[10]
-SLATE = (112, 118, 132)
-TEAL, CYAN, MAGENTA, AMBER, VIOLET = C[11], C[12], C[13], C[14], C[15]
+RED, SODIUM, NBLUE, PALE, WHITE = C[6], C[7], C[8], C[9], C[10]
+CRIMSON = (150, 28, 40)          # dunkles Rot (Blut, Rost) - dithert Signalrot/Schwarz
+ASH = (150, 162, 168)            # Beton-/Regengrau - dithert Stahl/Pale
+SLATE = (104, 118, 126)
+TEAL, CYAN, MAGENTA, AMBER, GREEN = C[11], C[12], C[13], C[14], C[15]
 
 W, H = config.RENDER_W, config.RENDER_H
 FAR_F = 0.10      # px Scroll pro Welt-Einheit Kamera
@@ -87,64 +89,66 @@ def soft_reflection(img):
 
 # ------------------------------------------------------------------------- Zonen-Themen
 
+_Z0, _Z1, _Z2, _Z3, _Z4 = (config.zone_look(i)["pal"] for i in range(5))
+
 THEMES = [
-    dict(  # 0 Außenbezirk: Industrie, Natriumdampf, Raffinerie-Fackeln am Horizont
+    dict(  # 0 Außenbezirk: Industrie, Natriumdampf, Raffinerie-Fackeln (Amber gegen Blau/Violett)
         name="Außenbezirk", style="industrial",
-        sky_top=(8, 6, 14), sky_mid=(44, 22, 34), sky_hor=(140, 62, 46), cloud=(54, 30, 38), cloud_lit=(150, 74, 50),
-        building=(28, 28, 40), building_hi=(52, 50, 64), far=(40, 24, 34), mid=(30, 24, 38),
-        lit=0.16, win=[(AMBER, 3), ((170, 120, 70), 3), (STEEL, 1)],
-        neon=[AMBER, TEAL, CRIMSON, CYAN], sign_rate=0.35,
-        lamp=(255, 150, 60), lamp_every=(130, 180), street=(20, 18, 26), asphalt=(32, 30, 40),
-        rain=0.55, fog=(44, 28, 36), fog_amt=0.45, flames=True, spinners=1, blimp=False,
-        billboards=0, searchlights=0, pyramid=False, cranes=False, rim=(140, 90, 70),
+        sky_top=(8, 6, 16), sky_mid=(36, 24, 52), sky_hor=(132, 64, 52), cloud=(46, 32, 58), cloud_lit=(150, 76, 60),
+        building=(26, 26, 44), building_hi=(50, 50, 76), far=(36, 26, 50), mid=(28, 26, 46),
+        lit=0.16, win=[(_Z0[9], 3), (_Z0[8], 3), (_Z0[5], 1)],
+        neon=config.zone_colors(0, "neon"), sign_rate=0.35,
+        lamp=(255, 150, 60), lamp_every=(130, 180), street=(16, 16, 24), asphalt=(26, 26, 36),
+        rain=0.55, fog=(38, 30, 44), fog_amt=0.42, flames=True, spinners=1, blimp=False,
+        billboards=0, searchlights=0, pyramid=False, cranes=False, rim=(150, 96, 70),
         words=["REPARATUR", "SCHROTT", "24H", "PARTS", "TANKE", "LAGER", "MOTEL", "BAR"],
         h_range=(50, 115), mid_h=(70, 170), far_h=(40, 110),
     ),
-    dict(  # 1 Vorstadt: Wohnblöcke, kaltes Neonröhrenlicht
+    dict(  # 1 Vorstadt: Wohnblöcke, kaltes Grün/Cyan der Leuchtröhren, wenig Pink
         name="Vorstadt", style="blocks",
-        sky_top=(6, 8, 16), sky_mid=(20, 20, 42), sky_hor=(66, 44, 92), cloud=(30, 28, 50), cloud_lit=(90, 66, 120),
-        building=(18, 22, 36), building_hi=(34, 40, 62), far=(24, 22, 42), mid=(20, 22, 40),
-        lit=0.24, win=[((170, 180, 200), 3), (AMBER, 2), (CYAN, 1), ((110, 120, 200), 2)],
-        neon=[CYAN, VIOLET, MAGENTA, TEAL, AMBER], sign_rate=0.5,
-        lamp=(170, 230, 240), lamp_every=(150, 210), street=(14, 16, 28), asphalt=(22, 24, 38),
-        rain=0.4, fog=(34, 30, 56), fog_amt=0.35, flames=False, spinners=2, blimp=False,
-        billboards=1, searchlights=1, pyramid=False, cranes=False, rim=(120, 140, 200),
+        sky_top=(5, 9, 10), sky_mid=(12, 26, 28), sky_hor=(34, 76, 70), cloud=(20, 34, 36), cloud_lit=(60, 108, 98),
+        building=(14, 22, 24), building_hi=(30, 46, 48), far=(18, 30, 32), mid=(16, 26, 28),
+        lit=0.24, win=[(_Z1[11], 3), (_Z1[10], 2), (_Z1[12], 2), (_Z1[13], 2), (_Z1[7], 1)],
+        neon=config.zone_colors(1, "neon"), sign_rate=0.5,
+        lamp=(170, 240, 200), lamp_every=(150, 210), street=(12, 18, 20), asphalt=(20, 28, 30),
+        rain=0.4, fog=(22, 40, 40), fog_amt=0.35, flames=False, spinners=2, blimp=False,
+        billboards=1, searchlights=1, pyramid=False, cranes=False, rim=(110, 190, 160),
         words=["KIOSK", "WASCHSALON", "NUDELN", "BLOCK 7", "APOTHEKE", "PFANDHAUS", "BAR", "LIVE"],
         h_range=(110, 210), mid_h=(80, 200), far_h=(30, 90),
     ),
-    dict(  # 2 Innenstadt: Neonmarkt, Starkregen, Holo-Werbung
+    dict(  # 2 Innenstadt (Chinatown): Teal-Dunst, Signalrot, Lampions, Starkregen
         name="Innenstadt", style="market",
-        sky_top=(8, 6, 16), sky_mid=(30, 16, 44), sky_hor=(120, 50, 120), cloud=(40, 24, 56), cloud_lit=(150, 60, 140),
-        building=(16, 18, 32), building_hi=(36, 34, 64), far=(32, 22, 52), mid=(24, 20, 44),
-        lit=0.30, win=[(MAGENTA, 1), (CYAN, 2), (AMBER, 2), ((170, 170, 210), 2)],
-        neon=[MAGENTA, CYAN, AMBER, VIOLET, TEAL, CRIMSON], sign_rate=1.0,
-        lamp=(200, 140, 230), lamp_every=(130, 190), street=(14, 12, 26), asphalt=(22, 20, 36),
-        rain=1.0, fog=(48, 26, 60), fog_amt=0.4, flames=False, spinners=4, blimp=True,
-        billboards=3, searchlights=2, pyramid=False, cranes=False, rim=(200, 90, 180),
+        sky_top=(5, 10, 12), sky_mid=(14, 32, 36), sky_hor=(46, 112, 108), cloud=(22, 40, 44), cloud_lit=(76, 140, 130),
+        building=(12, 20, 24), building_hi=(28, 46, 52), far=(20, 38, 42), mid=(16, 30, 34),
+        lit=0.30, win=[(_Z2[12], 2), (_Z2[8], 2), (_Z2[9], 2), (_Z2[7], 1)],
+        neon=config.zone_colors(2, "neon"), sign_rate=1.0,
+        lamp=(150, 240, 220), lamp_every=(130, 190), street=(10, 18, 20), asphalt=(18, 28, 30),
+        rain=1.0, fog=(28, 60, 58), fog_amt=0.42, flames=False, spinners=4, blimp=True,
+        billboards=3, searchlights=2, pyramid=False, cranes=False, rim=(90, 200, 186),
         words=["NUDELN", "SUSHI", "BAR", "HOTEL", "KARAOKE", "SNAKE PIT", "YUKON", "ESPER",
                "OPEN 24", "LIVE", "CLUB", "TAXI", "DRINK", "BRADBURY"],
         h_range=(90, 240), mid_h=(110, 260), far_h=(40, 110),
     ),
-    dict(  # 3 Hafen: Container, Kräne, Nebel, Rost
+    dict(  # 3 Hafen: Container, Kräne, Nebel - Asch-Blau gegen Natrium
         name="Hafen", style="harbor",
-        sky_top=(6, 8, 12), sky_mid=(22, 28, 36), sky_hor=(70, 80, 84), cloud=(34, 40, 48), cloud_lit=(90, 96, 96),
-        building=(18, 20, 26), building_hi=(40, 40, 46), far=(34, 40, 48), mid=(26, 30, 38),
-        lit=0.08, win=[(AMBER, 3), (TEAL, 1)],
-        neon=[AMBER, TEAL, CRIMSON], sign_rate=0.3,
-        lamp=(255, 150, 60), lamp_every=(160, 220), street=(14, 16, 20), asphalt=(24, 26, 30),
-        rain=0.35, fog=(70, 78, 84), fog_amt=0.75, flames=True, spinners=2, blimp=False,
+        sky_top=(6, 8, 10), sky_mid=(20, 26, 34), sky_hor=(70, 80, 90), cloud=(32, 38, 48), cloud_lit=(92, 100, 108),
+        building=(18, 22, 28), building_hi=(40, 46, 54), far=(32, 38, 48), mid=(24, 30, 38),
+        lit=0.08, win=[(_Z3[12], 3), (_Z3[15], 1)],
+        neon=config.zone_colors(3, "neon"), sign_rate=0.3,
+        lamp=(255, 150, 60), lamp_every=(160, 220), street=(14, 16, 20), asphalt=(24, 28, 32),
+        rain=0.35, fog=(52, 62, 72), fog_amt=0.62, flames=True, spinners=2, blimp=False,
         billboards=0, searchlights=1, pyramid=False, cranes=True, rim=(170, 120, 80),
         words=["DOCK 9", "ZOLL", "FRACHT", "OFF-WORLD", "KAI 4", "BAR"],
         h_range=(50, 120), mid_h=(60, 160), far_h=(20, 60),
     ),
-    dict(  # 4 Tyrell: Monolithe, weißes Licht, Pyramiden im Goldglühen
+    dict(  # 4 Tyrell: Monolithe, Pyramiden im Goldglühen - Gold gegen tiefes Blau
         name="Tyrell", style="tyrell",
-        sky_top=(6, 6, 12), sky_mid=(36, 24, 30), sky_hor=(150, 90, 50), cloud=(46, 32, 34), cloud_lit=(170, 110, 60),
-        building=(14, 16, 24), building_hi=(44, 44, 56), far=(40, 28, 30), mid=(24, 22, 30),
-        lit=0.16, win=[(AMBER, 3), ((220, 200, 160), 2), (PALE, 1)],
-        neon=[PALE, AMBER, CYAN], sign_rate=0.2,
-        lamp=(230, 236, 255), lamp_every=(140, 180), street=(14, 14, 20), asphalt=(26, 26, 32),
-        rain=0.3, fog=(60, 40, 36), fog_amt=0.35, flames=True, spinners=3, blimp=True,
+        sky_top=(5, 6, 12), sky_mid=(30, 26, 40), sky_hor=(156, 98, 48), cloud=(40, 34, 46), cloud_lit=(176, 116, 60),
+        building=(12, 14, 26), building_hi=(40, 44, 66), far=(34, 30, 40), mid=(20, 22, 34),
+        lit=0.16, win=[(_Z4[9], 3), (_Z4[10], 2), (_Z4[11], 1)],
+        neon=config.zone_colors(4, "neon"), sign_rate=0.2,
+        lamp=(230, 236, 255), lamp_every=(140, 180), street=(12, 14, 20), asphalt=(24, 26, 34),
+        rain=0.3, fog=(50, 42, 50), fog_amt=0.35, flames=True, spinners=3, blimp=True,
         billboards=1, searchlights=3, pyramid=True, cranes=False, rim=(220, 180, 120),
         words=["TYRELL", "NEXUS", "SEKTOR T", "ZUTRITT"],
         h_range=(60, 140), mid_h=(50, 120), far_h=(30, 80),
@@ -161,6 +165,7 @@ SHOP_KINDS = {
                ("diner", 1)],
     "harbor": [("shutter", 4), ("bar", 2), ("repair", 2), ("kiosk", 1), ("noodle", 1)],
     "tyrell": [("lobby", 4), ("shutter", 1), ("eye", 1)],
+    "derelict": [("shutter", 6), ("pawn", 1), ("repair", 1)],
 }
 SHOP_WORDS = {
     "repair": ["REPARATUR", "PARTS", "SCHROTT", "MOTOREN"], "shutter": [""],
@@ -404,13 +409,17 @@ class City:
         self.billboards, self.flames, self.lanterns, self.tvs = [], [], [], []
         self.searchlights = []
         self.ramen_spots = []
+        self.fires, self.walks = [], []            # Feuertonnen, Fußgängerampeln (props.py)
+        self.rng_deco = random.Random(seed * 523 + zone_index * 7 + 1)
         self.exit_x = length
         self._sky()
         self._clouds()
         self._far()
         self._mid()
+        self._spans()
         self._facade()
         self._holos()
+        self._wires()
         self._ground()
         self._fog_tex()
         self._cloud_bank()
@@ -748,10 +757,30 @@ class City:
             L = lx * fac.factor
             arm = rng.randint(10, 18)
             y = base - rng.randint(46, 60)
-            self._lamp_post(p, fac.lx(L), y, base, arm)
-            self.lamps.append(Lamp(lx, L, y, arm, th["lamp"], rng.randint(0, 9999), rng.random() < 0.18))
+            if th["style"] in ("market", "blocks", "industrial") and self.rng_deco.random() < 0.45:
+                # V-Doppelleuchte wie im Film: zwei schräge Arme, zwei Köpfe
+                va = rng.randint(9, 13)
+                col = qc((30, 32, 36))
+                x_ = int(fac.lx(L))
+                p.fillRect(x_, y + 8, 2, base - y - 8, col)
+                pen = QPen(col)
+                pen.setWidth(2)
+                p.setPen(pen)
+                p.drawLine(x_ + 1, y + 8, x_ + va, y + 1)
+                p.drawLine(x_ + 1, y + 8, x_ - va + 2, y + 1)
+                p.setPen(Qt.PenStyle.NoPen)
+                sd = rng.randint(0, 9999)
+                fl = rng.random() < 0.18
+                self.lamps.append(Lamp(lx, L, y, va, th["lamp"], sd, fl))
+                self.lamps.append(Lamp(lx, L, y, -va, th["lamp"], sd + 1, False))
+            else:
+                self._lamp_post(p, fac.lx(L), y, base, arm)
+                self.lamps.append(Lamp(lx, L, y, arm, th["lamp"], rng.randint(0, 9999), rng.random() < 0.18))
             lx += rng.uniform(*th["lamp_every"])
         self._street_props(p, e, fac, rng, base)
+        if self.zone == 4:
+            props.sebastian(self, p, e, fac, base)
+        props.furnish(self, p, e, fac, base)
         # Nudelstände an den deterministischen Positionen (Herzen auffüllen)
         for rx in procgen.ramen_positions(self.length, self.seed, self.zone):
             lx = fac.lx(rx * fac.factor) - 88
@@ -796,6 +825,14 @@ class City:
         top = base - bh
         col = mul(th["building"], rng.uniform(0.8, 1.2))
         hi = mul(th["building_hi"], rng.uniform(0.85, 1.1))
+        look = props.facade_look(self, self.rng_deco) if bw >= 40 and bh >= 70 else "plain"
+        # Tyrell: zum Ende hin altes, verlassenes Viertel (Sebastians Straße)
+        self._derelict = self.zone == 4 and (fac.lmin + x) / fac.factor > self.length * (config.EMPTY_FROM - 0.04)
+        if self._derelict:
+            style = "blocks"
+            look = "old" if bw >= 30 else "plain"
+        if look == "old":
+            col = props.old_stone(col)
         g = QLinearGradient(0, top, 0, base)
         g.setColorAt(0, qc(mul(col, 0.8)))
         g.setColorAt(1, qc(mix(col, hi, 0.6)))
@@ -806,7 +843,9 @@ class City:
         p.fillRect(x + bw - 1, top, 1, bh, qc(mul(col, 0.5)))
         dark = mul(col, 0.55)
         shop_h = rng.randint(32, 40) if style != "tyrell" else rng.randint(36, 46)
-        if style == "industrial":
+        if look == "modern":
+            props.modern(p, e, self.rng_deco, th, x, top, bw, bh, base, shop_h, col, hi)
+        elif style == "industrial":
             self._win_grid(p, e, rng, x, top, bw, base - shop_h, 14, 6, 3, 5, dark)
             # Rolltor
             dw = int(bw * rng.uniform(0.35, 0.55))
@@ -835,7 +874,7 @@ class City:
                 p.setPen(Qt.PenStyle.NoPen)
                 p.setBrush(qc(SLATE))
                 p.drawEllipse(QRectF(sx, sy, 5, 5))
-        elif style == "tyrell":
+        elif style == "tyrell" and not self._derelict:
             # Monolith: Lichtschlitze statt Fenster
             for xx in range(x + 8, x + bw - 8, rng.randint(18, 30)):
                 p.fillRect(xx, top + 10, 1, bh - shop_h - 16, qc(mul(PALE, 0.28)))
@@ -846,8 +885,10 @@ class City:
         else:
             self._win_grid(p, e, rng, x, top, bw, base - shop_h, rng.choice((12, 14, 16)), rng.randint(4, 6),
                            rng.randint(4, 7), rng.randint(3, 5), dark)
+        if look == "old":
+            props.ornament(p, e, self.rng_deco, th, x, top, bw, bh, base, shop_h, col, hi)
         # Feuerleiter
-        if style in ("market", "blocks", "industrial") and rng.random() < 0.35 and bh > 90:
+        if look != "modern" and style in ("market", "blocks", "industrial") and rng.random() < 0.35 and bh > 90:
             fx = x + rng.randint(6, max(7, bw - 30))
             fw = 22
             pen = QPen(qc(mul(hi, 0.75)))
@@ -860,7 +901,7 @@ class City:
             p.setPen(Qt.PenStyle.NoPen)
         # Klimageräte, Rohre
         ay_lo, ay_hi = top + 6, base - shop_h - 8
-        for _ in range(rng.randint(0, 3) if ay_hi > ay_lo and bw > 12 else 0):
+        for _ in range(rng.randint(0, 3) if ay_hi > ay_lo and bw > 12 and look != "modern" else 0):
             ax = x + rng.randint(2, bw - 10)
             ay = rng.randint(ay_lo, ay_hi)
             p.fillRect(ax, ay, 8, 6, qc(mul(hi, 0.9)))
@@ -918,7 +959,7 @@ class City:
         top = base - sh
         p.fillRect(x, top, bw, sh, qc(mul(col, 0.7)))
         p.fillRect(x, top, bw, 2, qc(mul(hi, 1.2)))
-        style = th["style"]
+        style = "derelict" if getattr(self, "_derelict", False) else th["style"]
         kinds = SHOP_KINDS.get(style)
         if kinds:
             # Mehrere Läden nebeneinander, wenn das Haus breit genug ist
@@ -1006,7 +1047,7 @@ class City:
             for yy in range(top + 4, base, 2):
                 p.fillRect(x + 2, yy, w - 4, 1, qc(mul(hi, 0.65 if yy % 4 else 0.45)))
             # Graffiti
-            gc = rng.choice((MAGENTA, CYAN, AMBER, VIOLET, CRIMSON))
+            gc = rng.choice((GREEN, CYAN, AMBER, NBLUE, RED))
             pen = QPen(qc(mul(gc, 0.7)))
             pen.setWidth(2)
             p.setPen(pen)
@@ -1397,6 +1438,59 @@ class City:
             busy.append((L - 60, L + 60))
             self.holos.append(dict(kind="street", L=L, base=self.fy + 3, h=rng.uniform(74, 88),
                                    col=rng.choice(cols), seed=rng.randint(0, 999), mirror=rng.random() < 0.5))
+
+    def _spans(self):
+        """Überbauten zum Durchgehen: Brücken (Pfeiler auf der anderen Straßenseite) und
+        überhängende Gebäude (Unterseite mit Neonröhren, hängenden Schildern). Lage aus
+        procgen.span_layout (die Sim stellt Tonnen/Wracks darunter). Höhe der Unterseite
+        in Welt-Einheiten (Kamera steht bei ~141 u)."""
+        self.spans = []
+        for L in procgen.span_layout(self.length, self.seed, self.zone, self.exit_x):
+            rng = random.Random(L["seed"])
+            kind, x0, x1 = L["kind"], L["x0"], L["x1"]
+            w = x1 - x0
+            tubes = [rng.choice(self.th["neon"][:4]) for _ in range(rng.randint(2, 4))]
+            signs = []
+            if kind == "overhang":
+                for _k in range(rng.randint(1, 3)):
+                    signs.append((rng.uniform(0.1, 0.8), rng.choice(self.th["neon"]), rng.choice(self.th["words"]),
+                                  rng.randint(14, 40), rng.randint(0, 999)))
+            # breite Brücken stehen auf mehreren Pfeilern
+            piers = [x0 + w * f for f in ((0.5,) if w < 110 else ((0.25, 0.75) if w < 170 else (0.15, 0.5, 0.85)))]
+            self.spans.append(dict(kind=kind, x0=x0, x1=x1, hu=rng.uniform(146, 154) if kind == "bridge"
+                                   else rng.uniform(144, 150), t=34.0 + w * 0.08 if kind == "bridge" else 400.0,
+                                   col=mul(self.th["building_hi"], rng.uniform(0.6, 0.85)), tubes=tubes,
+                                   signs=signs, seed=L["seed"], piers=piers if kind == "bridge" else []))
+        self.spans.sort(key=lambda s: s["x0"])
+
+    # Kabel quer über die Straße: mittlerer Abstand (u) je Zone, Anteil Bündel
+    WIRE_GAP = [(260, 0.35), (300, 0.3), (190, 0.5), (240, 0.4), (520, 0.15)]
+
+    def _wires(self):
+        """Kabel, die quer über die Straße hängen: von hoch oben an der Häuserfront über
+        die Fahrbahn bis über die Kamera hinweg, mit Durchhang. Einzeln oder als Bündel,
+        dünn bis dick. Nicht unter Brücken/Überhängen."""
+        rng = random.Random(self.seed * 271 + self.zone * 5 + 3)
+        gap, p_bundle = self.WIRE_GAP[self.zone % len(self.WIRE_GAP)]
+        self.wires = []
+        x = self.cam_min + rng.uniform(40, gap)
+        while x < self.cam_max:
+            if not any(s["x0"] - 30 < x < s["x1"] + 30 for s in self.spans):
+                bundle = rng.random() < p_bundle
+                n = rng.randint(2, 4) if bundle else 1
+                base_w = rng.uniform(0.9, 1.6) if bundle else rng.choice((0.5, 0.7, 1.0, 1.6, 2.4))
+                h0 = rng.uniform(150, 200)
+                dx = rng.uniform(-60, 60)
+                sag = rng.uniform(40, 75)
+                strands = []
+                for j in range(n):
+                    strands.append(dict(dh=j * rng.uniform(1.5, 3.0), dx=rng.uniform(-2, 2), dsag=rng.uniform(-4, 6),
+                                        w=base_w * rng.uniform(0.7, 1.2)))
+                self.wires.append(dict(x=x, dx=dx, h0=h0, h1=h0 + rng.uniform(-10, 30), sag=sag, strands=strands,
+                                       col=rng.choice(((8, 9, 11), (12, 12, 14), (10, 10, 10))),
+                                       seed=rng.randint(0, 9999)))
+            x += rng.uniform(0.5, 1.5) * gap
+        self.wires.sort(key=lambda w: w["x"])
 
     def _alley(self, p, e, fac, rng, x, bw, base):
         th = self.th

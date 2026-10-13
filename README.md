@@ -22,8 +22,30 @@ available in **German and English** (switchable in the settings).
 | ![Main menu](screenshots/menu.png) | ![Settings](screenshots/settings.png) |
 | ![Outskirts](screenshots/level0.png) | ![Suburbs](screenshots/level1.png) |
 | ![Downtown](screenshots/level2.png) | ![Harbor](screenshots/level3.png) |
+| ![Tyrell](screenshots/level4.png) | ![ROY in front of Sebastian's house](screenshots/roy.png) |
 
-![Tyrell](screenshots/level4.png)
+## Atmosphere first
+
+The game is meant to be played calmly: walk through the city, take it in, have a
+few moments that feel like the film. The mechanics serve the mood – and the
+further you get, the denser and less readable the streets become, until the
+question is no longer *who* is a replicant but whether it matters.
+
+- **Own palette per quarter:** every zone has its own 16 colors built around one
+  complementary pair plus a few close shades for highlights on the figures
+  (outskirts amber ↔ blue/violet, suburbs green/cyan ↔ pink, downtown teal ↔
+  signal red, harbor ash blue ↔ sodium, Tyrell gold ↔ deep blue).
+- **Dense streets:** old ornate facades with retrofitted cables next to
+  hyper-modern blocks, chalk-graffiti monoliths and ornamented columns, wrecks
+  and trash in the outskirts (cleaner further in), **bridges and overhanging
+  buildings** you walk underneath, pedestrian **signal towers** as free-standing
+  objects (some right in front of the camera, slightly out of focus),
+  **cables strung across the street** (single or in bundles), thin out-of-focus
+  cables and lamps in the foreground, paper litter swirling in gusts, cyclists
+  in small groups as pure scenery, a 60s sedan among the modern traffic, paper
+  umbrellas with glowing shafts.
+- **CRT phosphor:** near-white highlights smear a little longer, and fading
+  trails get softer as they decay.
 
 ## Core loop
 
@@ -39,7 +61,8 @@ reticle) flashes up above that person. It marks the tell, not the truth:
 humans occasionally show a false reflex too.
 
 - **Zones:** Outskirts → Suburbs → Downtown → Harbor → Tyrell.
-- **Variety:** jumping (over obstacles, dodging blows), traffic on two lanes,
+- **Variety:** jumping (over barriers, barrels and bins – not over wrecks or
+  parked cars – and dodging blows), traffic on two lanes,
   police searchlight (reveals eye reflexes), blackouts, bounty replicants,
   **landing police spinners** (the downdraft pushes everyone aside, then a
   ground check with a searchlight; the spinner blocks the median),
@@ -63,7 +86,7 @@ humans occasionally show a false reflex too.
   two-tone roofs, skirts, racing stripes), underglow, brightness and lettering
   (Tyrell, Shimata, Pan Am, Off-World, Nexus 6, Eye Works …) are combined per
   vehicle – taxi roof signs, bus ad banners, bus route (e.g. "12 HADES") and
-  truck lettering are random too. 16 variants per type.
+  truck lettering are random too. 32 variants per type.
 - **Traffic turns into a column:** every quarter has more vehicles – and the
   denser the traffic, the slower it flows: stop-and-go, halted taxis, jam horns,
   usually 5–7 vehicles on screen downtown. And the slower and fuller it is, the
@@ -88,9 +111,14 @@ humans occasionally show a false reflex too.
 - **Syd Mead traffic:** police spinner with a capsule cockpit and wheel pods,
   Deckard's sedan, metro-cab with a glass dome, Sebastian's armadillo truck,
   aerial limousine, a city bus full of passengers, a motorcycle with disc wheels.
-- **Final boss:** in Tyrell, **ROY** appears. He delivers his lines (invulnerable
-  while speaking) and takes hits between sentences. The gate only opens once he
-  is down.
+- **Finale:** Tyrell is a long last sector. Toward the end the city empties –
+  derelict blocks, shutters, ornate columns – until **J. F. Sebastian's house**
+  (the Bradbury). **ROY** stands in front of it and waits until you come close.
+  In the fight he only taunts you with lines from the film. Once he has beaten
+  you down to **one heart** he lets go and stands defenseless: one shot is
+  enough. If you don't shoot, he speaks – *tears in rain* – dies on his own, and
+  a dove rises. The ending reflects which way you chose. The exit only opens once
+  the quota is met and ROY is no longer standing.
 
 ## Controls
 
@@ -147,7 +175,7 @@ under `%LOCALAPPDATA%\shadegunner\`.
   automatically to a **CPU fallback** (dither + scanlines + vignette, ~25–30 fps).
   Can be forced with `--software` or `SHADEGUNNER_SOFTWARE=1` (needs numpy).
 - Internal (dither) resolution 640×360, upscaled by the CRT/display chain.
-- Palette `noir16` (a custom noir palette) by default.
+- One 16-color palette per zone (`config.ZONE_LOOK`); the HUD keeps `noir16`.
 - The game itself is **numpy-free**; numpy is only used for sound generation
   (with a fallback without numpy).
 - **Settings** (music, effects, fullscreen, **resolution**, scanlines,
@@ -156,10 +184,12 @@ under `%LOCALAPPDATA%\shadegunner\`.
   game gets exactly the chosen resolution (centered); in fullscreen the screen
   resolution applies.
 - Tests: `python3 tests/test_sim.py` (simulation, no GL).
+- Test cheat: type `giveall` anywhere (immortal, exit always open);
+  `giveall1`–`giveall5` jumps straight into sector 1–5.
 
 ## Tools
 
-- `tools/glshot.py` – offscreen GPU render to PNG (`--hud`, `--size=1920x1080`, `--lang=en`, …)
+- `tools/glshot.py` – offscreen GPU render to PNG (`--hud`, `--size=1920x1080`, `--lang=en`, `--at=bridge|sebastian|0.4`, `--roy`, …)
 - `tools/playtest.py` – end-to-end with the real `GameWidget`
 - `tools/autoplay.py` – balancing bot
 - `tools/spritesheet.py` – sprite overview

@@ -224,8 +224,9 @@ class CRTRenderer:
         prog.setUniformValue(u["u_mode"], 3)
         prog.setUniformValue(u["u_order"], 3)
         prog.setUniformValue(u["u_spread"], float(config.DITHER_SPREAD))
-        prog.setUniformValue(u["u_pal_off"], shaders.PAL_OFFSETS[config.DEFAULT_PALETTE])
-        prog.setUniformValue(u["u_pal_n"], len(config.PALETTES[config.DEFAULT_PALETTE]))
+        pal = config.ACTIVE["palette"]
+        prog.setUniformValue(u["u_pal_off"], shaders.PAL_OFFSETS[pal])
+        prog.setUniformValue(u["u_pal_n"], len(config.PALETTES[pal]))
         prog.setUniformValue(u["u_phosphor"], QVector3D(0.0, 0.0, 0.0))
         prog.setUniformValue(u["u_has_hud"], 1 if hud is not None else 0)
         prog.setUniformValue(u["u_contrast"], float(config.GRADE_CONTRAST))

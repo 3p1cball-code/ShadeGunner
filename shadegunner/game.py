@@ -108,6 +108,7 @@ class _GameMixin:
     def _start_run(self):
         seed = random.randrange(1 << 16)
         self.run = Run(seed, self.settings.get("difficulty", "normal"))
+        self.run.cheat = getattr(self, "_cheat_on", False)
         self.world = World(self.run, seed=seed, zone_index=0)
         self.scene.ensure_zone(0, seed, self.world.length)
         self._set_mode("intro")
@@ -333,11 +334,54 @@ class _GameMixin:
             self.move(scr.center().x() - w // 2, scr.center().y() - h // 2)
 
     # ---------------------------------------------------------------- Input
+    # ---------------------------------------------------------------- Cheat
+    CHEAT = "giveall"
+
+    def _cheat_input(self, ch):
+        """Irgendwo im Spiel "giveall" tippen: unsterblich, Ausgang immer offen.
+        "giveall1".."giveall5": zusätzlich direkt in Sektor 1-5 springen."""
+        if not ch or not ch.isprintable():
+            return False
+        self._typed = (getattr(self, "_typed", "") + ch.lower())[-12:]
+        t = self._typed
+        if len(t) >= 8 and t[-8:-1] == self.CHEAT and t[-1] in "12345":
+            self._typed = ""
+            self._cheat_goto(int(t[-1]) - 1)
+            return True
+        if t.endswith(self.CHEAT):
+            self._cheat_on = True
+            run = getattr(self.world, "run", None)
+            if run is not None:
+                run.cheat = True
+                self.world._say("CHEAT: GIVEALL")
+            self.audio.play("bounty")
+        return False
+
+    def _cheat_goto(self, zi):
+        seed = random.randrange(1 << 16)
+        fresh = self.mode in ("title", "over", "victory") or getattr(self, "run", None) is None
+        if fresh:
+            self.run = Run(seed, self.settings.get("difficulty", "normal"))
+        run = self.run
+        run.cheat = True
+        self._cheat_on = True
+        run.hp = run.max_hp
+        self.audio.play("bounty")
+
+        def go():
+            self.world = World(run, seed=seed, zone_index=zi)
+            self.scene.ensure_zone(zi, seed, self.world.length)
+            self.options = []
+            self._set_mode("intro")
+        self._transition(go)
+
     def keyPressEvent(self, e):
         k = e.key()
         rep = e.isAutoRepeat()
         self.keys.add(k)
         if rep:
+            return
+        if self._cheat_input(e.text()):
             return
         if k == K.Key_F:
             self.settings["fullscreen"] = not self.isFullScreen()

@@ -19,3 +19,6 @@ build/
 
 # Werkzeug-Artefakte (Playwright) — lokale Browser-Automation
 .playwright-mcp/
+
+# Filmstills als Look-Referenz (urheberrechtlich geschützt, nur lokal)
+reference/

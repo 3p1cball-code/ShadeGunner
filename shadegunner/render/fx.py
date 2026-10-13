@@ -1,4 +1,4 @@
-"""Effekte: Regen + Spritzer, Dampf, Funken, Leuchtspuren, Screenshake, Blitze.
+"""Effekte: Regen + Spritzer, Dampf, Funken, Leuchtspuren, Screenshake.
 
 Alles in Bildschirm-Koordinaten der Dither-Auflösung; Partikel mit Welt-Anker
 (Dampf aus Gullys, Treffer) werden pro Frame neu projiziert.
@@ -42,9 +42,6 @@ class FX:
         self.tracers = []
         self.flashes = []
         self.trauma = 0.0
-        self.lightning = 0.0
-        self.bolt = None
-        self._next_bolt = 8.0
         self.hurt = 0.0
         self.intensity = 0.6
         self._steam_tex = [_soft(r, (150, 156, 170), 60) for r in (4, 6, 9, 13)]
@@ -186,22 +183,3 @@ class FX:
             return 0, 0
         return (int(round(self.rng.uniform(-1, 1) * 5 * t)), int(round(self.rng.uniform(-1, 1) * 4 * t)))
 
-    # ------------------------------------------------------------------ Blitz
-    def update_weather(self, dt, rain_level):
-        self.lightning = max(0.0, self.lightning - dt * 3.0)
-        self._next_bolt -= dt
-        if self._next_bolt <= 0 and rain_level > 0.3:
-            self._next_bolt = self.rng.uniform(9.0, 22.0)
-            self.lightning = 1.0
-            x = self.rng.uniform(40, W - 40)
-            pts = [(x, 0.0)]
-            y = 0.0
-            while y < persp.FACADE_Y * 0.55:
-                y += self.rng.uniform(6, 14)
-                x += self.rng.uniform(-9, 9)
-                pts.append((x, y))
-            self.bolt = pts
-            return True
-        if self.lightning < 0.5:
-            self.bolt = None
-        return False

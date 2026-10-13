@@ -22,8 +22,29 @@ es auf **Deutsch und Englisch** (in den Einstellungen umschaltbar).
 | ![Hauptmenü](screenshots/menu.png) | ![Einstellungen](screenshots/settings.png) |
 | ![Außenbezirk](screenshots/level0.png) | ![Vorstadt](screenshots/level1.png) |
 | ![Innenstadt](screenshots/level2.png) | ![Hafen](screenshots/level3.png) |
+| ![Tyrell](screenshots/level4.png) | ![ROY vor Sebastians Haus](screenshots/roy.png) |
 
-![Tyrell](screenshots/level4.png)
+## Atmosphäre zuerst
+
+Das Spiel will ruhig gespielt werden: durch die Stadt gehen, sie aufnehmen, ein paar
+Momente erleben, die sich wie im Film anfühlen. Die Mechanik dient der Stimmung – und
+je weiter man kommt, desto dichter und unübersichtlicher werden die Straßen, bis die
+Frage nicht mehr ist, *wer* ein Replikant ist, sondern ob das überhaupt zählt.
+
+- **Eigene Palette je Viertel:** jede Zone hat ihre eigenen 16 Farben rund um ein
+  Komplementärpaar plus ein paar nahe Abstufungen für Spitzlichter auf den Figuren
+  (Außenbezirk Amber ↔ Blau/Violett, Vorstadt Grün/Cyan ↔ Pink, Innenstadt Teal ↔
+  Signalrot, Hafen Asch-Blau ↔ Natrium, Tyrell Gold ↔ tiefes Blau).
+- **Dichte Straßen:** alte, verschnörkelte Fassaden mit nachgerüsteten Kabeln neben
+  Hypermodernem, Kreide-Graffiti-Monolithen und Ornament-Säulen, Wracks und Müll im
+  Außenbezirk (weiter innen sauberer), **Brücken und überhängende Gebäude** zum
+  Durchgehen, **Ampeltürme** als freistehende Objekte (manche direkt vor der Kamera,
+  leicht unscharf), **Kabel quer über die Straße** (einzeln oder als Bündel), dünne
+  unscharfe Kabel und Lampen im Vordergrund, Papiermüll in Böen, Radfahrer in kleinen
+  Pulks als reine Kulisse, eine 60er-Limousine im modernen Verkehr, Papierschirme mit
+  leuchtendem Schaft.
+- **CRT-Phosphor:** fast weiße Spitzlichter ziehen etwas länger nach, und ausfadende
+  Spuren werden beim Abklingen weicher.
 
 ## Kern-Loop
 
@@ -39,7 +60,8 @@ Spiels aufblitzen (Auge im Scanner-Fadenkreuz). Es markiert den Tell, nicht die
 Wahrheit: Auch Menschen zeigen gelegentlich einen falschen Reflex.
 
 - **Zonen:** Außenbezirk → Vorstadt → Innenstadt → Hafen → Tyrell.
-- **Abwechslung:** Springen (über Hindernisse, Schlägen ausweichen), Verkehr auf zwei
+- **Abwechslung:** Springen (über Baken, Tonnen und Kisten – nicht über Wracks oder
+  parkende Autos – und Schlägen ausweichen), Verkehr auf zwei
   Fahrspuren, Polizei-Suchlicht (macht Augenreflexe sichtbar), Stromausfall,
   Kopfgeld-Replikanten, **landende Polizei-Spinner** (Abwind schiebt alle weg, danach
   Kontrolle mit Suchlicht vom Boden aus; der Spinner sperrt den Mittelstreifen),
@@ -61,7 +83,7 @@ Wahrheit: Auch Menschen zeigen gelegentlich einen falschen Reflex.
   Zweifarbdach, Schweller, Rallyestreifen), Unterboden-Neon, Helligkeit und Schriftzüge
   (Tyrell, Shimata, Pan Am, Off-World, Nexus 6, Eye Works …) werden je Fahrzeug
   kombiniert – auch Taxi-Dachschilder, Bus-Werbeband, Buslinie (z. B. „12 HADES“) und
-  Laster-Aufschrift sind zufällig. 16 Varianten je Art.
+  Laster-Aufschrift sind zufällig. 32 Varianten je Art.
 - **Verkehr wird zur Kolonne:** Mit jedem Viertel fahren mehr Fahrzeuge – und je dichter
   der Verkehr, desto langsamer fließt er: Stop-and-go, haltende Taxis, Stau-Hupen, in der
   Innenstadt meist 5–7 Fahrzeuge im Bild. Und je langsamer und voller, desto **leiser**
@@ -85,9 +107,14 @@ Wahrheit: Auch Menschen zeigen gelegentlich einen falschen Reflex.
 - **Verkehr nach Syd Mead:** Polizei-Spinner mit Kapsel-Kanzel und Radgondeln,
   Deckard-Sedan, Metrokab mit Glas-Dom, Sebastians Armadillo-Laster, Aerial-Limousine,
   Stadtbus voller Fahrgäste, Motorrad mit Radscheiben.
-- **Endboss:** In Tyrell tritt **ROY** auf. Er redet seine Sprüche (dabei
-  unverwundbar) und verträgt zwischen den Sätzen Treffer. Das Tor öffnet erst,
-  wenn er liegt.
+- **Finale:** Tyrell ist ein langer letzter Sektor. Gegen Ende leert sich die Stadt –
+  verfallene Viertel, Rollläden, Ornament-Säulen – bis zu **J. F. Sebastians Haus**
+  (dem Bradbury). Davor steht **ROY** und wartet, bis man herankommt. Im Kampf stichelt
+  er nur mit Sätzen aus dem Film. Hat er dich bis auf **ein Herz** geschlagen, lässt er
+  ab und steht wehrlos da: Ein Schuss genügt. Schießt du nicht, spricht er – *Tränen im
+  Regen* –, stirbt von selbst, und eine Taube steigt auf. Das Ende spiegelt, welchen Weg
+  du gewählt hast. Der Ausgang öffnet erst, wenn die Quote erfüllt ist und ROY nicht
+  mehr steht.
 
 ## Steuerung
 
@@ -144,7 +171,7 @@ Klang-Cache unter `%LOCALAPPDATA%\shadegunner\`.
   **CPU-Fallback** um (Dither + Scanlines + Vignette, ~25–30 fps). Erzwingbar mit
   `--software` oder `SHADEGUNNER_SOFTWARE=1` (braucht numpy).
 - Interne (Dither-)Auflösung 640×360, wird per CRT/Anzeige hochskaliert.
-- Palette `noir16` (eigene Noir-Palette) als Standard.
+- Eine 16-Farben-Palette je Zone (`config.ZONE_LOOK`); das HUD behält `noir16`.
 - Das Spiel selbst ist **numpy-frei**; numpy wird nur zur Klang-Erzeugung genutzt
   (mit Fallback ohne numpy).
 - **Einstellungen** (Musik, Effekte, Vollbild, **Auflösung**, Scanlines, **Sprache**
@@ -153,10 +180,12 @@ Klang-Cache unter `%LOCALAPPDATA%\shadegunner\`.
   bekommt das Spiel exakt die gewählte Auflösung (zentriert); im Vollbild gilt die
   Bildschirmauflösung.
 - Tests: `python3 tests/test_sim.py` (Simulation, ohne GL).
+- Test-Cheat: irgendwo `giveall` tippen (unsterblich, Ausgang immer offen);
+  `giveall1`–`giveall5` springt direkt in Sektor 1–5.
 
 ## Werkzeuge
 
-- `tools/glshot.py` – Offscreen-GPU-Render nach PNG (`--hud`, `--size=1920x1080`, `--lang=en`, …)
+- `tools/glshot.py` – Offscreen-GPU-Render nach PNG (`--hud`, `--size=1920x1080`, `--lang=en`, `--at=bridge|sebastian|0.4`, `--roy`, …)
 - `tools/playtest.py` – End-to-End mit echtem `GameWidget`
 - `tools/autoplay.py` – Balancing-Bot
 - `tools/spritesheet.py` – Sprite-Übersicht

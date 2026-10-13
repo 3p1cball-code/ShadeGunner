@@ -35,7 +35,7 @@ ZONES = [
          traffic=2.9, parked=5.5, steam=2.6, patrol=40.0, blackout=0.6),
     dict(name="Hafen",       length=2400, density=2.4, sidewalk=1.3, groups=0.38, replicants=9, quota=5, camo=0.7, aggression=0.5, flee=0.6,
          traffic=2.7, parked=6.5, steam=3.0, patrol=45.0, blackout=0.8),
-    dict(name="Tyrell",      length=2300, density=2.6, sidewalk=1.4, groups=0.32, replicants=10, quota=5, camo=0.9, aggression=0.65, flee=0.6,
+    dict(name="Tyrell",      length=4000, density=2.6, sidewalk=1.4, groups=0.32, replicants=10, quota=5, camo=0.9, aggression=0.65, flee=0.6,
          traffic=2.4, parked=7.0, steam=3.2, patrol=30.0, blackout=0.5),
 ]
 
@@ -46,20 +46,20 @@ BOUNTY_NAMES = ["HODGE", "LEON", "ZHORA", "PRIS", "ROY"]
 VEHICLES = {
     "car": (87.0, 29.0, 170.0), "taxi": (84.0, 40.0, 185.0), "truck": (138.0, 48.0, 135.0),
     "bike": (45.0, 36.0, 230.0), "police": (90.0, 31.0, 215.0), "limo": (126.0, 26.5, 160.0),
-    "bus": (180.0, 56.0, 120.0),
+    "bus": (180.0, 56.0, 120.0), "classic": (98.0, 26.0, 150.0),
 }
 ZONE_PARKED = [
-    ["truck", "car", "car"],
-    ["car", "car", "taxi", "bike", "car"],
-    ["taxi", "car", "car", "bike", "taxi", "bus"],
-    ["truck", "truck", "car", "car", "bike"],
+    ["truck", "classic", "car", "classic"],
+    ["car", "classic", "taxi", "bike", "car"],
+    ["taxi", "car", "classic", "bike", "taxi", "bus"],
+    ["truck", "truck", "classic", "car", "bike"],
     ["limo", "car", "limo", "police"],
 ]
 ZONE_TRAFFIC = [
-    ["car", "car", "car", "taxi", "bike", "truck"],
-    ["car", "car", "car", "taxi", "taxi", "bike", "police", "truck", "bus"],
-    ["car", "car", "car", "taxi", "taxi", "car", "bike", "police", "truck", "bus"],
-    ["car", "car", "car", "taxi", "car", "bike", "truck", "police", "bus"],
+    ["car", "classic", "car", "classic", "taxi", "bike", "truck"],
+    ["car", "car", "classic", "taxi", "taxi", "bike", "police", "truck", "bus"],
+    ["car", "car", "car", "taxi", "taxi", "classic", "bike", "police", "truck", "bus"],
+    ["car", "car", "classic", "taxi", "car", "bike", "truck", "police", "bus"],
     ["car", "car", "car", "taxi", "limo", "car", "police", "truck"],
 ]
 
@@ -104,6 +104,8 @@ class Run:
         self.zone_index = 0
         self.totals = dict(reps=0, civs=0, escaped=0, scans=0, shots=0, time=0.0)
         self.origami = []           # gefundene Origami-Figuren (Gaff war hier)
+        self.roy_spared = False     # ROY hat dich verschont und du ihn
+        self.cheat = False          # "giveall": unsterblich, Ausgang immer offen
         self.mods = dict(scan_max=config.SCAN_CHARGES, scan_time=1.0, deep=False, observe=1.0,
                          speed=1.0, aim_min=config.AIM_MIN, susp=1.0, flee=1.0, glint=1.0,
                          shout_cd=1.0, shout_r=1.0)
@@ -169,6 +171,8 @@ class World:
         self.camera_x = self.player.x + 60.0
 
         self.actors = []
+        if self.zone_index == 4:            # am Ende leert sich die Stadt - dann steht da ROY
+            self.zone["fade"] = (self.length * config.EMPTY_FROM, self.length - config.EMPTY_TO)
         acts, self._uid = procgen.populate(self.rng, self.zone, 140.0, self.length + 60.0, 1, self.zone_index)
         self.actors.extend(acts)
         self.actors.append(self.player)
@@ -188,6 +192,15 @@ class World:
         self.manholes, stacks = procgen.manholes(rng2, self.zone, self.length,
                                                  [r["x"] for r in self.ramen], self.obstacles)
         self.obstacles += stacks
+        # Ampeltürme: eigenständige Objekte am hinteren Gehweg und nah vor der Kamera
+        self.obstacles += procgen.towers(seed, self.zone_index, self.length, [r["x"] for r in self.ramen],
+                                         self.obstacles)
+        # Unter Brücken: Feuertonnen und Wracks (gleiche Lage wie im Renderer)
+        self.spans = procgen.span_layout(self.length, seed, self.zone_index)
+        for o in procgen.under_spans(self.zone_index, self.spans):
+            if not any(abs(o["x"] - q["x"]) < o["w"] + q["w"] + 6 and abs(o["d"] - q["d"]) < o["dd"] + q["dd"] + 0.02
+                       for q in self.obstacles):
+                self.obstacles.append(o)
         self._unstick(acts)
         self.origami = self._place_origami()
         self.vehicles = []
@@ -206,6 +219,13 @@ class World:
         self.boss_line = 0
         self.boss_hits = 0
         self.boss_speak_t = 0.0
+        self.boss_text = None          # was ROY gerade sagt (HUD tippt es ab)
+        self.boss_text_dur = 1.0
+        self.roy_mercy = False         # er hat dich bis auf ein Herz geschlagen und lässt ab
+        self.roy_mono_i = 0
+        self.roy_mono_t = 0.0
+        self.roy_spared = False        # ... und du hast ihn nicht erschossen
+        self.roy_waiting = False       # er steht da und wartet, bis man herankommt
         self.blackout_t = 0.0
         self.blackout_at = self.rng.uniform(35.0, 85.0) if self.rng.random() < self.zone.get("blackout", 0) else None
         self._veh_uid = 0
@@ -485,8 +505,10 @@ class World:
         self._animate(p, dt, depth_move=md)
 
     def exit_open(self):
-        if self.boss_spawned and self.boss is not None:
-            return not self.boss.alive      # Tor öffnet erst, wenn ROY liegt
+        if getattr(self.run, "cheat", False):
+            return True
+        if self.boss_spawned and self.boss is not None and self.boss.alive:
+            return False                    # Tor öffnet erst, wenn ROY nicht mehr steht
         return (self.stats["reps"] >= self.quota or self.reps_remaining() == 0
                 or self.stats["reps"] + self.reps_remaining() < self.quota)
 
@@ -813,16 +835,19 @@ class World:
             a.flash_t = 0.3
             a.knock = 44.0 * (1 if a.x >= self.player.x else -1)
             self.events.append(("boss_hit", a.hp))
-            if a.hp <= 0:
+            if a.hp <= 0 or self.roy_mercy:          # wehrlos: ein Schuss genügt
+                a.hp = 0
                 self._kill(a)
+                self.boss_text = None
+                self.boss_speak_t = 0.0
                 self.events.append(("boss_dead",))
                 self._say(tr("ROY deaktiviert."))
                 return "boss_dead"
             self.boss_hits += 1
-            if self.boss_hits >= config.ROY_PER_LINE and self.boss_line < len(config.ROY_LINES) - 1:
+            if self.boss_hits >= config.ROY_PER_LINE and self.boss_line < len(config.ROY_TAUNTS) - 1:
                 self.boss_hits = 0
                 self.boss_line += 1
-                self.boss_speak_t = config.ROY_SPEAK_S
+                self._roy_say(config.ROY_TAUNTS[self.boss_line], config.ROY_SPEAK_S)
                 a.boss_invuln = True
                 self.events.append(("boss_line", self.boss_line))
             return "boss"
@@ -903,6 +928,13 @@ class World:
         p = self.player
         if p.invuln > 0 or self.state != "playing":
             return False
+        if getattr(src, "boss", False) and (self.roy_mercy or p.hp <= config.ROY_MERCY_HP):
+            if not self.roy_mercy:
+                self._roy_mercy()
+            return False                         # ROY nimmt dir nie das letzte Herz
+        if getattr(self.run, "cheat", False) and p.hp <= 1:
+            p.invuln = 1.0
+            return False                         # Cheat: das letzte Herz bleibt
         src_x = src["x"] if isinstance(src, dict) else src.x
         p.hp -= 1
         self.run.hp = p.hp
@@ -1396,7 +1428,7 @@ class World:
         look.update(outfit="long", head="short", umbrella=None, hair=(214, 220, 226),
                     coat=(22, 22, 28), coat_name="schwarz", collar=True, bag=None,
                     wf=1.12, hf=1.07, cig=False, led=False, mask=False, old=False)
-        b = Actor(x=min(self.length - 70.0, self.player.x + 120.0), depth=self.player.depth,
+        b = Actor(x=self.length - config.ROY_STAND, depth=0.3,
                   look=look, uid=900, is_replicant=True, facing=-1, speed=24.0,
                   phase=0.0, target_depth=self.player.depth)
         b.hp = config.ROY_HP
@@ -1411,21 +1443,33 @@ class World:
         self.boss_spawned = True
         self.boss_line = 0
         self.boss_hits = 0
-        self.boss_speak_t = config.ROY_SPEAK_S + 0.8
-        self.events.append(("boss",))
-        self.target = b
-        self.manual_target = True
+        self.roy_waiting = True         # er steht im Regen vor Sebastians Haus und wartet
 
     def _update_boss(self, dt):
         if self.zone_index != 4 or self.state != "playing":
             return
         if not self.boss_spawned:
-            # ROY tritt erst auf, wenn der Auftrag in Tyrell erledigt ist (Quote erfüllt)
-            if self.stats["reps"] >= self.quota and self.player.x > self.length - config.ROY_TRIGGER:
-                self._spawn_boss()
+            # ROY steht immer vor Sebastians Haus und wartet
+            self._spawn_boss()
             return
         b = self.boss
         if b is None or not b.alive:
+            return
+        p = self.player
+        if self.roy_waiting:
+            b.state, b.vx, b.timer, b.boss_invuln = "idle", 0.0, 99.0, True
+            b.facing = 1 if p.x >= b.x else -1
+            if abs(p.x - b.x) < config.ROY_WAKE:
+                self.roy_waiting = False
+                self._roy_say(config.ROY_TAUNTS[0], config.ROY_SPEAK_S + 0.8)
+                self.events.append(("boss",))
+                self.target = b
+                self.manual_target = True
+            return
+        if not self.roy_mercy and p.hp <= config.ROY_MERCY_HP and self.boss_speak_t <= 0.0:
+            self._roy_mercy()
+        if self.roy_mercy:
+            self._update_mercy(b, dt)
             return
         if self.boss_speak_t > 0.0:            # während der Rede: stehen, unverwundbar
             self.boss_speak_t -= dt
@@ -1444,6 +1488,65 @@ class World:
                 b.state = "attack"
                 b.timer = 99.0
 
+    def _roy_say(self, text, dur):
+        self.boss_text = text
+        self.boss_text_dur = dur
+        self.boss_speak_t = dur
+
+    def _roy_mercy(self):
+        """ROY hätte dich töten können - und lässt ab. Ab jetzt ist er wehrlos: ein Schuss
+        genügt. Wer wartet, hört ihn sprechen und sieht ihn sterben."""
+        b = self.boss
+        self.roy_mercy = True
+        self.roy_waiting = False
+        self.roy_mono_i = 0
+        self.roy_mono_t = 0.0
+        b.boss_invuln = False
+        b.aggressive = False
+        b.alert = False
+        b.state = "idle"
+        b.vx = 0.0
+        b.timer = 999.0
+        self._roy_say(config.ROY_LINES[0], config.ROY_MONO_S)
+        if self.target is b:
+            self.target = None
+            self.manual_target = False
+        self._say(tr("ROY lässt von dir ab."))
+        self.events.append(("roy_mercy",))
+
+    def _update_mercy(self, b, dt):
+        p = self.player
+        p.invuln = max(p.invuln, 0.3)            # niemand sonst stört diesen Moment
+        if self.patrol_cd is not None:
+            self.patrol_cd = max(self.patrol_cd, 20.0)
+        b.state = "idle"
+        b.vx = 0.0
+        b.timer = 999.0
+        b.boss_invuln = False
+        b.facing = 1 if p.x >= b.x else -1
+        self.roy_mono_t += dt
+        self.boss_speak_t = max(0.0, config.ROY_MONO_S - self.roy_mono_t)
+        if self.roy_mono_t < config.ROY_MONO_S:
+            return
+        self.roy_mono_i += 1
+        self.roy_mono_t = 0.0
+        if self.roy_mono_i < len(config.ROY_LINES):
+            self._roy_say(config.ROY_LINES[self.roy_mono_i], config.ROY_MONO_S)
+            return
+        # Er stirbt von selbst. Kein Treffer, keine Punkte - eine Taube fliegt auf.
+        b.alive = False
+        b.state = "dead"
+        b.dead_t = 0.0
+        b.peaceful = True
+        if self.target is b:
+            self.target = None
+        self.boss_text = None
+        self.boss_speak_t = 0.0
+        self.roy_spared = True
+        self.run.roy_spared = True
+        self._say(tr("Er hat dir das Leben gerettet."))
+        self.events.append(("dove", b.x, b.depth))
+
     # ------------------------------------------------------------------ Stromausfall
     def _update_blackout(self, dt):
         if self.blackout_at is not None and self.time >= self.blackout_at:
@@ -1458,7 +1561,7 @@ class World:
                 self.events.append(("blackout_end",))
 
     def _fail(self, reason):
-        if self.state != "playing":
+        if self.state != "playing" or getattr(self.run, "cheat", False):
             return
         self.state = "failed"
         self.fail_reason = reason
@@ -1729,7 +1832,7 @@ class World:
         if not a.alive and not a.escaped:
             a.anim = "die"
             n = frame_count("die")
-            a.phase = min(1.0, a.dead_t / 0.9)
+            a.phase = min(1.0, a.dead_t / (3.0 if getattr(a, "peaceful", False) else 0.9))
             a.frame = min(n - 1, int(a.phase * (n - 1) + 0.0001))
             return
         st = a.state

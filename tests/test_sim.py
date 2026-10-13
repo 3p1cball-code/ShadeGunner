@@ -107,7 +107,7 @@ def test_scan_far_hides_serial():
 
 def test_kill_outcomes():
     w = World(seed=3, zone_index=2)
-    rep = next(a for a in w.actors if a.is_replicant)
+    rep = next(a for a in w.actors if a.is_replicant and a.hp <= 1)    # kein zäher Kopfgeld-Nexus
     _place_near(w, rep)
     w.target = rep
     for a in w.actors:          # Schusslinie frei räumen
@@ -403,10 +403,10 @@ def test_cancel_aim_no_shot():
 def test_boss_flow():
     w = World(seed=3, zone_index=4)
     _quiet(w)
-    w.player.x = w.length - config.ROY_TRIGGER + 5
     w.update(DT, {})
-    assert not w.boss_spawned, "ROY spawnt, obwohl der Auftrag nicht erfüllt ist"
+    assert w.boss_spawned and w.roy_waiting, "ROY steht nicht von Anfang an vor Sebastians Haus"
     w.stats["reps"] = w.quota          # Tyrell-Auftrag erfüllt
+    w.player.x = w.boss.x - 60         # herangehen: er beginnt
     w.update(DT, {})
     b = w.boss
     assert w.boss_spawned and b is not None and b.alive and b.hp == config.ROY_HP
@@ -420,6 +420,75 @@ def test_boss_flow():
         w._hit(b)
     assert not b.alive
     assert w.exit_open(), "Tor blieb nach ROY zu"
+    assert not w.roy_spared
+
+
+def test_cheat_giveall():
+    w = World(seed=5, zone_index=1)
+    _quiet(w)
+    assert not w.exit_open()
+    w.run.cheat = True
+    assert w.exit_open(), "Cheat: Ausgang muss offen sein"
+    w.player.hp = 1
+    w.player.invuln = 0.0
+    a = next(x for x in w.actors if not x.player)
+    assert not w.hurt_player(a) and w.player.hp == 1, "Cheat: letztes Herz verloren"
+    w.suspicion = 5.0
+    w._fail("suspicion")
+    assert w.state == "playing", "Cheat: trotzdem gescheitert"
+
+
+def test_tyrell_empties_towards_roy():
+    w = World(seed=3, zone_index=4)
+    end = [a for a in w.actors if not a.player and a.x > w.length - config.EMPTY_TO]
+    mid = [a for a in w.actors if not a.player and w.length * 0.3 < a.x < w.length * 0.5]
+    assert len(end) <= 2 and len(mid) > 10, (len(end), len(mid))
+
+
+def test_roy_spares_you():
+    """Hat ROY dich bis auf ein Herz geschlagen, lässt er ab. Schießt man nicht, spricht
+    er seinen Monolog, stirbt von selbst und eine Taube fliegt auf."""
+    w = World(seed=3, zone_index=4)
+    _quiet(w)
+    w.player.x = w.length - config.ROY_TRIGGER + 5
+    w.stats["reps"] = w.quota
+    w.update(DT, {})
+    b = w.boss
+    w.boss_speak_t = 0.0
+    w.player.hp = 2
+    w.player.invuln = 0.0
+    assert w.hurt_player(b)                         # vorletztes Herz geht verloren
+    w.player.invuln = 0.0
+    assert not w.hurt_player(b) and w.player.hp == 1, "ROY nimmt das letzte Herz"
+    assert w.roy_mercy
+    w.events.clear()
+    doves = []
+    for _ in range(int(config.ROY_MONO_S * len(config.ROY_LINES) / DT) + 30):
+        w.update(DT, {})
+        doves += [e for e in w.events if e[0] == "dove"]
+        w.events.clear()
+        if not b.alive:
+            break
+    assert not b.alive and w.roy_spared and doves, "ROY ist nicht von selbst gestorben"
+    assert w.player.hp == 1 and w.exit_open()
+
+
+def test_roy_killed_when_helpless():
+    w = World(seed=3, zone_index=4)
+    _quiet(w)
+    w.player.x = w.length - config.ROY_TRIGGER + 5
+    w.stats["reps"] = w.quota
+    w.update(DT, {})
+    b = w.boss
+    assert w.roy_waiting, "ROY soll erst dastehen und warten"
+    w.player.x = b.x - 60                 # herangehen: er beginnt
+    w.update(DT, {})
+    assert not w.roy_waiting
+    w.boss_speak_t = 0.0
+    w.player.hp = 1
+    w.update(DT, {})
+    assert w.roy_mercy
+    assert w._hit(b) == "boss_dead" and not w.roy_spared, "wehrloser ROY hält mehr als einen Schuss aus"
 
 
 def test_manual_target_scan_too_far():
@@ -723,6 +792,13 @@ def test_settings_rows_match_keys():
     from shadegunner.hud import HUD
     assert _GameMixin._SETTING_KEYS == [r[0] for r in HUD.SETTING_ROWS]
     assert "lang" in _GameMixin._SETTING_KEYS
+
+
+def test_towers_are_objects():
+    for z in range(5):
+        w = World(seed=7, zone_index=z)
+        tw = [o for o in w.obstacles if o["kind"] == "tower"]
+        assert any(o["d"] < 0.1 for o in tw) and any(o["d"] > 1.0 for o in tw), (z, len(tw))
 
 
 def main():

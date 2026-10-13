@@ -31,16 +31,16 @@ ANIMS = {
 # Mantelfarben mit deutschem Adjektiv (Kopfgeld-Beschreibung muss sagbar sein)
 COATS = [
     ((44, 52, 86), "dunkelblau"), ((66, 80, 124), "blau"), ((78, 80, 94), "grau"),
-    ((126, 32, 58), "rot"), ((34, 96, 106), "türkis"), ((100, 66, 150), "violett"),
+    ((126, 32, 58), "rot"), ((34, 96, 106), "türkis"), ((48, 100, 70), "grün"),
     ((96, 120, 166), "hellblau"), ((24, 24, 32), "schwarz"), ((196, 150, 52), "gelb"),
     ((196, 200, 208), "weiß"), ((196, 70, 140), "pink"), ((200, 104, 44), "orange"),
 ]
 COAT_W = [5, 5, 4, 3, 3, 2, 3, 5, 1, 1, 1, 1]
 PANTS = [(22, 24, 38), (34, 40, 62), (52, 58, 80), (28, 30, 46), (16, 16, 22)]
 SKINS = [(206, 176, 158), (164, 122, 100), (118, 84, 70), (226, 210, 200), (186, 150, 124), (92, 64, 54)]
-HAIRS = [(14, 14, 20), (40, 30, 30), (170, 172, 180), (138, 32, 56), (122, 74, 168),
+HAIRS = [(14, 14, 20), (40, 30, 30), (170, 172, 180), (150, 28, 40), (46, 104, 250),
          (64, 210, 220), (226, 210, 160), (10, 10, 14), (224, 72, 150), (200, 104, 44)]
-NEON = [C[12], C[13], C[14], C[15], C[11], C[9]]
+NEON = [C[12], C[13], C[14], C[15], C[11], C[9], C[6], C[8]]   # cyan magenta amber grün teal pale rot blau
 
 OUTFITS = ["trench", "trench", "long", "jacket", "jacket", "dress", "cloak", "robe", "hoodie",
            "vest", "suit", "overall"]
@@ -64,13 +64,17 @@ HEAD_NAME_EN = dict(short="SHORT HAIR", long="LONG HAIR", bun="BUN", fedora="HAT
                     hood="HOOD UP", conical="CONICAL HAT", mohawk="MOHAWK", bald="BALD",
                     beanie="BEANIE", ponytail="PONYTAIL", visor="GLOW VISOR", afro="AFRO")
 COAT_COLOR_EN = {"dunkelblau": "dark blue", "blau": "blue", "grau": "grey", "rot": "red",
-                 "türkis": "teal", "violett": "violet", "hellblau": "light blue", "schwarz": "black",
+                 "türkis": "teal", "violett": "violet", "grün": "green", "hellblau": "light blue", "schwarz": "black",
                  "gelb": "yellow", "weiß": "white", "pink": "pink", "orange": "orange"}
 
 
 def _mul(c, f):
     return (max(0, min(255, int(c[0] * f))), max(0, min(255, int(c[1] * f))),
             max(0, min(255, int(c[2] * f))))
+
+
+def _mix(a, b, t):
+    return (int(a[0] + (b[0] - a[0]) * t), int(a[1] + (b[1] - a[1]) * t), int(a[2] + (b[2] - a[2]) * t))
 
 
 def _adj(word, genus):
@@ -108,12 +112,21 @@ def describe(look):
     return cloth, head
 
 
-def random_look(rng, uid, rain=0.6):
+def _umb_style(r):
+    """Schirmart: transparente Kuppel, Papierschirm (beige, wie im Film) oder Stoff."""
+    return "bubble" if r < 0.3 else ("paper" if r < 0.55 else "flat")
+
+
+PAPER = (176, 146, 100)
+
+
+def random_look(rng, uid, rain=0.6, accents=None):
     outfit = rng.choice(OUTFITS)
     head = rng.choice(HEADS)
     if outfit == "hoodie" and rng.random() < 0.6:
         head = "hood"
-    umbrella = rng.choice(NEON[:5] + [(220, 230, 255)]) if rng.random() < 0.18 + 0.22 * rain else None
+    acc = accents or NEON
+    umbrella = rng.choice(acc) if rng.random() < 0.18 + 0.22 * rain else None
     if head in ("conical", "afro"):
         umbrella = None if rng.random() < 0.7 else umbrella
     ci = rng.choices(range(len(COATS)), COAT_W)[0]
@@ -122,10 +135,10 @@ def random_look(rng, uid, rain=0.6):
     bag = rng.choice((None, None, None, None, "bag", "briefcase", "backpack"))
     return dict(
         id=uid, outfit=outfit, head=head, umbrella=umbrella,
-        umb_style="bubble" if rng.random() < 0.3 else "flat",
+        umb_style=_umb_style(rng.random()),
         wf=rng.uniform(0.82, 1.28), hf=rng.uniform(0.88, 1.08) * (0.95 if old else 1.0),
         coat=coat, coat_name=cname, pants=rng.choice(PANTS), skin=rng.choice(SKINS),
-        hair=(170, 172, 180) if old else rng.choice(HAIRS), accent=rng.choice(NEON),
+        hair=(170, 172, 180) if old else rng.choice(HAIRS), accent=rng.choice(acc),
         bag=bag, collar=rng.random() < 0.3,
         cig=rng.random() < 0.12, led=rng.random() < 0.16, mask=rng.random() < 0.1, old=old,
     )
@@ -577,6 +590,16 @@ def _umbrella(p, emit, look, hc):
         p.drawEllipse(QRectF(apex.x() - R * 0.5, apex.y() + 0.5, R, 6.0))
         _pen(p, (220, 232, 244), 0.8, 150)
         p.drawPolyline(QPolygonF(pts[:13]))
+    elif look.get("umb_style") == "paper":
+        # Geöltes Papier über Bambusrippen, vom Leuchtstab warm durchschienen
+        _fill(p, _mul(PAPER, 0.62), 235)
+        p.drawPolygon(canopy)
+        _fill(p, _mix(_mul(PAPER, 0.95), uc, 0.25), 170)
+        p.drawPolygon(QPolygonF([QPointF(apex.x() - R * 0.45, apex.y() + 7.4), apex,
+                                 QPointF(apex.x() + R * 0.45, apex.y() + 7.4)]))
+        _pen(p, _mul(PAPER, 0.35), 0.5, 200)
+        for i in (2, 4, 8, 10):
+            p.drawLine(apex, pts[i])
     else:
         _fill(p, _mul(uc, 0.32), 215)
         p.drawPolygon(canopy)

@@ -18,7 +18,7 @@ from .render import pixfont
 
 S = config.HUD_SCALE
 HW, HH = config.RENDER_W * S, config.RENDER_H * S
-C = config.NOIR16
+C = config.NOIR16_OLD   # HUD liegt über dem Dither: alte Farben bleiben
 VOID, NIGHT, NAVY, INDIGO, BLUE, STEEL = C[0], C[1], C[2], C[3], C[4], C[5]
 CRIMSON, SLATE, ASH, PALE, WHITE = C[6], C[7], C[8], C[9], C[10]
 TEAL, CYAN, MAGENTA, AMBER, VIOLET = C[11], C[12], C[13], C[14], C[15]
@@ -109,6 +109,8 @@ class HUD:
                 self._events(p, world)
                 self._reticle(p, ui.get("mouse"), world)
                 self._boss(p, world)
+        if getattr(getattr(world, "run", None), "cheat", False) and mode in ("play", "pause", "intro"):
+            self._t(p, HW - 16, HH - 56, "GIVEALL", MAGENTA, 2, "right")
         if mode == "title":
             self._title(p, ui)
         elif mode == "intro":
@@ -179,10 +181,11 @@ class HUD:
                 y = (top - pulse) if sy < 0 else (bot + pulse)
                 p.fillRect(QRectF(x - (L if sx > 0 else 0), y - (3 if sy > 0 else 0), L, 3), QColor(*col))
                 p.fillRect(QRectF(x - (3 if sx > 0 else 0), y - (L if sy > 0 else 0), 3, L), QColor(*col))
-            label = f"#{tg.uid:04d}"
-            if tg.revealed:
-                label += f"  {int(round(c * 100))}%"
-            self._t(p, cx, top - pulse - 22, label, col, 2, "center")
+            if tg is not getattr(world, "boss", None):          # ROY trägt sein eigenes Label
+                label = f"#{tg.uid:04d}"
+                if tg.revealed:
+                    label += f"  {int(round(c * 100))}%"
+                self._t(p, cx, top - pulse - 22, label, col, 2, "center")
             if tg.state == "flee":
                 self._t(p, cx, top - pulse - 40, "FLÜCHTET", AMBER, 2, "center")
             elif tg.state in ("attack", "punch"):
@@ -194,8 +197,10 @@ class HUD:
         if bo is not None and bo.alive:
             bx, bgy, bh = self._scr(scene, bo, world)
             col = AMBER if bo.boss_invuln else WHITE
+            if getattr(world, "roy_mercy", False):
+                col = PALE
             self._t(p, bx, bgy - bh * 1.12 - 22, "ROY", col, 3, "center")
-            if bo.boss_invuln:
+            if bo.boss_invuln and not getattr(world, "roy_mercy", False):
                 self._t(p, bx, bgy - bh * 1.12 - 48, "(REDET)", ASH, 2, "center")
         # Blocker in der Schusslinie
         b = world.blocker if world.aiming else None
@@ -308,6 +313,18 @@ class HUD:
         b = getattr(world, "boss", None)
         if b is None or not b.alive:
             return
+        text = getattr(world, "boss_text", None)
+        if getattr(world, "roy_waiting", False):
+            return                                    # er steht nur da - noch kein Kampf
+        if getattr(world, "roy_mercy", False):
+            # Kein Lebensbalken mehr - nur er, der Regen und was er sagt
+            if text:
+                k = 1.0 - world.boss_speak_t / max(0.1, world.boss_text_dur)
+                line = tr(text)
+                n = int(len(line) * min(1.0, k * 1.8))
+                for i, part in enumerate(wrap(line[:n], 56)):
+                    self._t(p, HW // 2, HH - 190 + i * 24, part, PALE, 2, "center")
+            return
         w2, h2 = 384, 30
         x2 = (HW - w2) // 2
         y2 = 64
@@ -325,9 +342,9 @@ class HUD:
             on = i < b.hp
             p.fillRect(QRectF(bx + i * segw, y2 + 10, segw - 2, 11),
                        QColor(*(RED if on else (42, 22, 28))))
-        if getattr(world, "boss_speak_t", 0.0) > 0.0:
-            line = tr(config.ROY_LINES[getattr(world, "boss_line", 0)])
-            k = 1.0 - world.boss_speak_t / config.ROY_SPEAK_S
+        if getattr(world, "boss_speak_t", 0.0) > 0.0 and text:
+            line = tr(text)
+            k = 1.0 - world.boss_speak_t / max(0.1, world.boss_text_dur)
             n = int(len(line) * min(1.0, k * 1.35))
             self._t(p, HW // 2, HH - 172, "ROY: " + line[:n], PALE, 2, "center")
 
@@ -688,10 +705,13 @@ class HUD:
     def _end(self, p, world, ui, won):
         self._dim(p, 185)
         run = world.run
-        if won:
+        if won and getattr(run, "roy_spared", False):
+            self._t(p, HW // 2, 90, "ROY HAT DICH VERSCHONT", PALE, 5, "center")
+            self._t(p, HW // 2, 160, "SCHADE, DASS ER NICHT LEBEN WIRD.", ASH, 2, "center")
+            self._t(p, HW // 2, 184, "ABER WER LEBT SCHON?", ASH, 2, "center")
+        elif won:
             self._t(p, HW // 2, 90, "TYRELL HQ ERREICHT", GREEN, 5, "center")
-            self._t(p, HW // 2, 160, "ALL DIESE MOMENTE WERDEN VERLOREN SEIN", ASH, 2, "center")
-            self._t(p, HW // 2, 184, "IN DER ZEIT, SO WIE TRÄNEN IM REGEN.", ASH, 2, "center")
+            self._t(p, HW // 2, 160, "SIE HABEN GANZE ARBEIT GELEISTET, SIR.", ASH, 2, "center")
         else:
             self._t(p, HW // 2, 90, "EINSATZ BEENDET", RED, 5, "center")
             reason = ("VERDACHT ZU HOCH - DIENSTMARKE ENTZOGEN" if world.fail_reason == "suspicion"

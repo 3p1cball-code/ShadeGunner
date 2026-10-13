@@ -18,17 +18,19 @@ ZONE_RAIN = [0.55, 0.4, 1.0, 0.35, 0.3]
 
 # Hindernisse: Art -> (halbe Breite u, halbe Tiefe, Höhe u)
 OBSTACLE_KINDS = {
-    "barrier": (11.0, 0.035, 9.0),     # Polizei-Absperrung (gestreift)
-    "crates": (9.0, 0.05, 11.0),       # Kistenstapel
-    "bins": (8.0, 0.045, 8.0),         # Müllsäcke / Tonne
-    "barrel": (4.5, 0.03, 9.0),        # Feuertonne (leuchtet)
+    "barrier": (20.0, 0.04, 14.0),     # Polizei-Absperrung (gestreift, springbar)
+    "crates": (12.0, 0.055, 14.0),     # Kistenstapel
+    "bins": (10.0, 0.05, 10.0),        # Müllsäcke / Tonne
+    "barrel": (6.3, 0.035, 12.6),      # Feuertonne (leuchtet)
     "vending": (6.0, 0.03, 20.0),      # Getränkeautomat (leuchtet)
+    "wreck": (55.0, 0.07, 29.0),       # ausgeschlachteter 60er-Straßenkreuzer (aufgebockt), größer als ein Auto
+    "dustbin": (5.6, 0.035, 12.6),     # Blechmülltonne, oft überquellend
 }
 ZONE_OBSTACLES = [
-    ["barrel", "barrel", "bins", "crates", "barrier"],
-    ["bins", "bins", "vending", "barrier", "barrel"],
-    ["vending", "vending", "bins", "barrier", "crates"],
-    ["crates", "crates", "barrel", "barrier", "bins"],
+    ["barrel", "barrel", "bins", "crates", "wreck", "wreck", "dustbin", "dustbin"],
+    ["bins", "dustbin", "vending", "barrier", "barrel", "wreck", "dustbin"],
+    ["vending", "vending", "bins", "barrier", "crates", "dustbin", "dustbin"],
+    ["crates", "crates", "barrel", "barrier", "bins", "wreck", "dustbin"],
     ["barrier", "barrier", "vending", "crates"],
 ]
 
@@ -59,6 +61,10 @@ def populate(rng, zone, x_from, x_to, uid_start, zone_index=0):
             specs.append((gx + math.cos(ang) * rng.uniform(6, 9), max(config.NPC_DEPTH_MIN, gd + math.sin(ang) * 0.035),
                           "group", gid, gx))
         gid += 1
+    fade = zone.get("fade")
+    if fade:                                     # Stadt leert sich zum Ende hin
+        f0, f1 = fade
+        specs = [s for s in specs if s[0] < f0 or (s[0] < f1 and rng.random() > ((s[0] - f0) / (f1 - f0)) ** 0.8)]
     count = len(specs)
     n_rep = min(count - 4, zone["replicants"])
     replicant_ids = set(rng.sample(range(count), n_rep))
@@ -68,7 +74,7 @@ def populate(rng, zone, x_from, x_to, uid_start, zone_index=0):
         is_rep = i in replicant_ids
         uid = uid_start + i
         tells = spawn_tells(rng, is_rep, zone["camo"])
-        look = random_look(rng, uid, rain)
+        look = random_look(rng, uid, rain, config.zone_colors(zone_index, "people"))
         a = Actor(
             x=x,
             depth=depth,
@@ -113,6 +119,88 @@ def ramen_positions(length, seed, zone_index):
     for k in range(2):
         x = length * (0.28 + 0.44 * k) + rng.uniform(-120, 120)
         out.append(min(length - 160, max(180, x)))
+    return out
+
+
+# Überbauten je Zone (Brücken / überhängende Gebäude). Breite in Welt-Einheiten.
+SPAN_PLAN = [("bridge", "bridge", "overhang"), ("bridge", "overhang", "bridge"),
+             ("overhang", "bridge", "overhang", "bridge"), ("bridge", "bridge", "overhang"), ("overhang", "bridge")]
+BRIDGE_W = (70.0, 210.0)
+OVERHANG_W = (150.0, 260.0)
+
+
+def span_layout(length, seed, zone_index, exit_x=None):
+    """Deterministische Lage der Überbauten - Renderer und Sim (Tonnen/Wracks darunter)
+    nutzen dieselbe Liste. Gibt [dict(kind, x0, x1, seed)] nach x sortiert."""
+    rng = random.Random(seed * 911 + zone_index * 13 + 2)
+    exit_x = length if exit_x is None else exit_x
+    busy = [(r - 170, r + 190) for r in ramen_positions(length, seed, zone_index)]
+    busy.append((exit_x - 260, exit_x + 200))
+    out = []
+    for kind in SPAN_PLAN[zone_index % len(SPAN_PLAN)]:
+        for _ in range(80):
+            w = rng.uniform(*(BRIDGE_W if kind == "bridge" else OVERHANG_W))
+            x0 = rng.uniform(length * 0.08, length * 0.9 - w)
+            if any(a < x0 + w and x0 < b for a, b in busy):
+                continue
+            busy.append((x0 - 220, x0 + w + 220))
+            out.append(dict(kind=kind, x0=x0, x1=x0 + w, seed=rng.randint(0, 99999)))
+            break
+    out.sort(key=lambda s: s["x0"])
+    return out
+
+
+def under_spans(zone_index, spans):
+    """Hindernisse unter den Brücken: Feuertonnen (Obdachlose wärmen sich) und Wracks.
+    Eigener Zufall je Überbau, damit die übrige Straße unverändert bleibt."""
+    out = []
+    clean = zone_index == 4
+    for s in spans:
+        r = random.Random(s["seed"] + 17)
+        n = 0 if clean else (2 + r.randint(0, 2) if s["kind"] == "bridge" else r.randint(0, 2))
+        xs = []
+        for _ in range(n * 4):
+            if len(xs) >= n:
+                break
+            x = r.uniform(s["x0"] + 8, s["x1"] - 8)
+            if any(abs(x - q) < 30 for q in xs):
+                continue
+            xs.append(x)
+            band = r.choice(config.OBSTACLE_BANDS)
+            kind = "barrel" if r.random() < 0.6 else "wreck"
+            w, dd, h = OBSTACLE_KINDS[kind]
+            d = r.uniform(band[0] + dd, band[1] - dd) if band[1] - band[0] > 2 * dd else (band[0] + band[1]) / 2
+            out.append(dict(x=x, d=d, w=w, dd=dd, h=h, kind=kind, seed=r.randint(0, 9999)))
+    return out
+
+
+# Ampeltürme je 1000 u: (hinterer Gehweg, nah vor der Kamera)
+TOWER_RATE = [(1.4, 0.6), (2.2, 0.8), (3.0, 1.2), (1.6, 0.6), (0.8, 0.4)]
+
+
+def towers(seed, zone_index, length, ramen=(), existing=()):
+    """Ampeltürme als eigene Objekte (wie Autos/Menschen nach Tiefe sortiert): am
+    hinteren Gehweg vor der Häuserfront und vereinzelt ganz vorn vor der Kamera
+    (dort außerhalb der Spielebene - sie verdecken, was dahinter passiert).
+    Eigener Zufall, damit der Rest der Straße unverändert bleibt."""
+    rng = random.Random(seed * 409 + zone_index * 3 + 11)
+    back, near = TOWER_RATE[zone_index % len(TOWER_RATE)]
+    out = []
+    for rate, (d0, d1) in ((back, (0.04, 0.06)), (near, (1.12, 1.2))):
+        n = int(length / 1000.0 * rate + rng.random())
+        for _ in range(n * 8):
+            if sum(1 for o in out if (o["d"] > 1.0) == (d0 > 1.0)) >= n:
+                break
+            x = rng.uniform(180.0, length - 160.0)
+            d = rng.uniform(d0, d1)
+            if any(abs(x - rx) < 120 for rx in ramen) or any(abs(x - o["x"]) < 90 for o in out):
+                continue
+            if any(abs(x - o["x"]) < o["w"] + 14 and abs(d - o["d"]) < o["dd"] + 0.05 for o in existing):
+                continue
+            sd = rng.randint(0, 99999)
+            # hintere Türme 35-45 % kleiner (aus dem Seed, damit die Zufallsfolge gleich bleibt)
+            size = 1.0 if d0 > 1.0 else 0.55 + (sd % 1000) / 1000.0 * 0.10
+            out.append(dict(x=x, d=d, w=7.0 * size, dd=0.025, h=999.0, kind="tower", seed=sd, size=size))
     return out
 
 

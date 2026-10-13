@@ -13,18 +13,14 @@ from PyQt6.QtGui import QImage, QPainter, QRadialGradient, QColor
 from .. import config
 from ..palette import bayer_matrix
 
-_PAL = None
 _BAYER = None
-_LUT = None
+_LUTS = {}
 _LUT_BITS = 6
 _WEIGHTS = np.array([0.9, 1.1, 0.8], np.float32)
 
 
 def _pal():
-    global _PAL
-    if _PAL is None:
-        _PAL = np.array(config.PALETTES[config.DEFAULT_PALETTE], np.float32) / 255.0
-    return _PAL
+    return np.array(config.PALETTES[config.ACTIVE["palette"]], np.float32) / 255.0
 
 
 def _bayer():
@@ -37,15 +33,16 @@ def _bayer():
 
 def _lut():
     """Nächste Palettenfarbe für jeden 6-Bit-RGB-Würfel, einmal vorberechnet (64^3, uint8)."""
-    global _LUT
-    if _LUT is None:
+    name = config.ACTIVE["palette"]
+    lut = _LUTS.get(name)
+    if lut is None:
         n = 1 << _LUT_BITS
         v = np.linspace(0.0, 1.0, n, dtype=np.float32)
         g = np.stack(np.meshgrid(v, v, v, indexing="ij"), axis=-1).reshape(-1, 3)
         pal = _pal()
         d = ((g[:, None, :] - pal[None, :, :]) * _WEIGHTS) ** 2
-        _LUT = d.sum(-1).argmin(-1).astype(np.uint8).reshape(n, n, n)
-    return _LUT
+        lut = _LUTS[name] = d.sum(-1).argmin(-1).astype(np.uint8).reshape(n, n, n)
+    return lut
 
 
 def _to_rgb(img):

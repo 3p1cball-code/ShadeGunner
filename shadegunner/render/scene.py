@@ -6,11 +6,12 @@ Pro Frame (~6-9 ms bei 640x360):
   -> nasser Boden (Spiegelungen, Perspektiv-Textur, Lichtkegel) -> Figuren
   (Schatten, Spiegelbild, Rimlight, Augenreflex) -> Laser/Scan/Leuchtspuren
   -> Regen, Vordergrund -> Glow-Pass (Leuchtschicht verkleinert/vergrößert,
-  additiv) -> Blitz/Treffer/Blende.
+  additiv) -> Treffer/Blende.
 
 Danach Bayer-Dither + CRT auf der GPU (render/glrender.py).
 """
 
+import bisect
 import math
 import random
 
@@ -19,15 +20,17 @@ from PyQt6.QtGui import (QBrush, QColor, QImage, QLinearGradient, QPainter, QPen
                          QPolygonF, QRadialGradient, QRegion)
 
 from .. import config, persp
-from . import holo, pixfont, sprites, vehicles
+from . import holo, pixfont, props, sprites, vehicles
 from .city import CLOUD_F, MID_F, City, mix, mul, qc, soft_reflection
 from .fx import FX
 
 C = config.NOIR16
 VOID, NIGHT, NAVY, INDIGO, BLUE, STEEL = C[0], C[1], C[2], C[3], C[4], C[5]
-CRIMSON, SODIUM, ASH, PALE, WHITE = C[6], C[7], C[8], C[9], C[10]
-SLATE = (112, 118, 132)
-TEAL, CYAN, MAGENTA, AMBER, VIOLET = C[11], C[12], C[13], C[14], C[15]
+RED, SODIUM, NBLUE, PALE, WHITE = C[6], C[7], C[8], C[9], C[10]
+CRIMSON = (150, 28, 40)          # dunkles Rot (Blut, Rost) - dithert Signalrot/Schwarz
+ASH = (150, 162, 168)            # Beton-/Regengrau - dithert Stahl/Pale
+SLATE = (104, 118, 126)
+TEAL, CYAN, MAGENTA, AMBER, GREEN = C[11], C[12], C[13], C[14], C[15]
 
 W, H = config.RENDER_W, config.RENDER_H
 PLUS = QPainter.CompositionMode.CompositionMode_Plus
@@ -45,7 +48,7 @@ def _hash(i, s):
 
 # --------------------------------------------------------------------- Billboards
 
-def _billboard_frames(rng, w, h, kind):
+def _billboard_frames(rng, w, h, kind, neon=(RED, CYAN, AMBER, GREEN)):
     frames = []
     if kind == "face":
         hair = (14, 10, 20)
@@ -102,7 +105,7 @@ def _billboard_frames(rng, w, h, kind):
             img = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
             p = QPainter(img)
             p.fillRect(0, 0, w, h, qc((30, 8, 30)))
-            col = [MAGENTA, CYAN, AMBER, VIOLET][(k + rng.randint(0, 3)) % 4]
+            col = neon[(k + rng.randint(0, 3)) % len(neon)]
             for gy in range(3, h - 7, 9):
                 for gx in range(3, w - 5, 8):
                     for _ in range(4):
@@ -138,6 +141,14 @@ class Scene:
         self.fog_t = 0.0
         self._fog_d = 0.6          # aktuelle Nebeldichte (atmet über die Zeit)
         self.wisps = []            # Nebelschwaden, die durchs Vordergrundbild ziehen
+        self.bikes = []            # Radfahrer: reine Kulisse, nicht Teil der Simulation
+        self.doves = []            # ROYs Taube (nur wenn man ihn verschont)
+        self._bike_next = 12.0
+        self.litter = []           # flatternder Müll (Zeitungen, Papier) - Kulisse
+        self._gust = 6.0
+        self._fg_img = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
+        self._nb_img = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)   # nah, leicht unscharf
+        self._near = []
 
     # ------------------------------------------------------------------ Zone
     def ensure_zone(self, zone_index, seed, length=None):
@@ -147,11 +158,12 @@ class Scene:
         if key == self._zone_key:
             return
         self._zone_key = key
+        vehicles.set_zone(zone_index)
         self.city = City(zone_index, float(length), seed)
         th = self.city.th
         self.fx.set_rain(th["rain"])
         rng = random.Random(seed + 77)
-        self.bb_frames = [_billboard_frames(rng, bb[2], bb[3], rng.choice(("face", "logo", "kanji")))
+        self.bb_frames = [_billboard_frames(rng, bb[2], bb[3], rng.choice(("face", "logo", "kanji")), th["neon"])
                           for bb in self.city.billboards]
         self.spinners = []
         for _ in range(th["spinners"]):
@@ -161,6 +173,10 @@ class Scene:
             self.blimp = dict(x=rng.uniform(0, W), y=rng.uniform(28, 60), ad=rng.choice(ADS), off=0.0)
         self._refl.clear()
         self._last_cam = None
+        self.bikes = []
+        self._bike_next = random.Random(seed + 5).uniform(8.0, 25.0)
+        self.litter = []
+        self._gust = random.Random(seed + 6).uniform(4.0, 12.0)
 
     def _spawn_spinner(self, rng, initial=False):
         near = rng.random() < 0.35
@@ -189,6 +205,10 @@ class Scene:
                 fx.trauma = min(1.0, fx.trauma + 0.6)
             elif k == "kill":
                 fx.trauma = min(1.0, fx.trauma + 0.25)
+            elif k == "dove":
+                _, x, d = ev
+                self.doves.append(dict(x=x, d=d, z=persp.figure_h(d) / persp.ppu(d) * 0.55, t=0.0,
+                                       vx=6.0, vz=10.0))
 
 
     # ------------------------------------------------------------------ Frame
@@ -198,6 +218,7 @@ class Scene:
         self.t += dt
         t = self.t
         city, th, fx = self.city, self.city.th, self.fx
+        config.ACTIVE["palette"] = config.zone_look(city.zone)["name"]
         seed = getattr(world, "seed", 0)
         self._reflk = 0.6 + 0.7 * th["rain"]     # Regen verstärkt die Spiegelung
         cam = world.camera_x if cam_override is None else cam_override
@@ -206,9 +227,18 @@ class Scene:
 
         fx.update_rain(dt, cam_dx)
         fx.update_steam(dt)
+        self._update_bikes(dt, cam)
+        for dv in self.doves:
+            dv["t"] += dt
+            tt = dv["t"]
+            # erst ein paar unsichere Flügelschläge, dann steigt sie steil in den Regen
+            dv["vz"] = 10.0 + 34.0 * min(1.0, tt / 1.6)
+            dv["vx"] = 6.0 + 10.0 * math.sin(tt * 0.7)
+            dv["x"] += dv["vx"] * dt
+            dv["z"] += dv["vz"] * dt
+        self.doves = [dv for dv in self.doves if dv["t"] < 14.0]
+        self._update_litter(dt, cam)
         fx.update_combat(dt)
-        if fx.update_weather(dt, th["rain"]):
-            self.sfx.append(("thunder",))
 
         self.emit.fill(0)
         p = QPainter(self.img)
@@ -251,7 +281,13 @@ class Scene:
         self._ramen(p, e, world, cam, t, dt)
         self._shout_fx(p, e, world, cam, t)
         self._fog(p, 1, persp.FACADE_Y - 28, 72, cam * persp.ppu(0.0) + t * 9.0, min(1.0, fd * 0.7))
+        self._spans_back(p, e, cam, t)
+        self._near = []
         self._actors(p, e, world, cam, t, show_player)
+        self._near_layer(p, e, cam, t)
+        self._spans_front(p, e, cam, t)
+        for dv in self.doves:
+            self._draw_dove(p, e, dv, cam)
         if self.dark > 0:
             p.fillRect(0, 0, W, H, QColor(2, 3, 10, int(165 * self.dark)))
             self._glints(p, e, world, cam, boost=True)
@@ -261,14 +297,22 @@ class Scene:
         fx.draw_steam(p, cam, city.facade.factor)
         self._patrol(p, e, world, cam, t)
         self._spinners(p, e, dt, t, near=True)
+        dry = self._span_clip(cam)
+        if dry is not None:
+            p.save()
+            p.setClipRegion(QRegion(0, 0, W, H).subtracted(dry))
         fx.draw_rain(p, mix(th["fog"], PALE, 0.55))
+        if dry is not None:
+            p.restore()
         self._beam_rain(p)
         self._fog(p, 1, H - 70, 78, cam * persp.ppu(1.15) + t * 14.0, min(1.0, fd * 0.42))
         # Ganzflächiger Nebelschleier: bei dichter Lage verschwimmt auch der Vordergrund
         # (Vordergrund liegt "näher an der Kamera", also über allem anderen).
         self._fog_img(p, city.bank, -30, H + 70, cam * persp.ppu(1.0) * 0.6 + t * 7.0, min(0.46, fd * 0.34))
         self._wisps(p, dt, cam)
+        self._fg_e = e
         self._foreground(p, cam)
+        self._fg_e = None
         e.end()
 
         # Glow-Pass
@@ -286,10 +330,6 @@ class Scene:
         p.drawImage(QRectF(0, 0, W, H), tiny)
         p.setOpacity(1.0)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
-        if fx.lightning > 0:
-            p.setOpacity(fx.lightning * 0.22)
-            p.fillRect(0, 0, W, H, qc((200, 210, 255)))
-            p.setOpacity(1.0)
         p.setCompositionMode(OVER)
         if fx.hurt > 0:
             g = QRadialGradient(W / 2, H / 2, W * 0.7)
@@ -307,23 +347,12 @@ class Scene:
     def _sky(self, p, e, cam, t):
         city, fx = self.city, self.fx
         p.drawImage(0, 0, city.sky)
-        if fx.lightning > 0:
-            p.setOpacity(fx.lightning * 0.5)
-            p.fillRect(0, 0, W, int(persp.FACADE_Y), qc(mix(city.th["cloud_lit"], (200, 200, 255), 0.5)))
-            p.setOpacity(1.0)
         for img, speed, fac in city.cloud_layers:
             off = (t * speed + cam * fac) % img.width()
             x = -off
             p.drawImage(QPointF(int(x), 0), img)
             if x + img.width() < W:
                 p.drawImage(QPointF(int(x + img.width()), 0), img)
-        if fx.bolt:
-            pts = [QPointF(x, y) for x, y in fx.bolt]
-            for q, a in ((p, 255), (e, 255)):
-                pen = QPen(QColor(230, 236, 255, a))
-                pen.setWidth(1)
-                q.setPen(pen)
-                q.drawPolyline(QPolygonF(pts))
         self._spinners(p, e, 0.0, t, near=None)
 
     def _far_life(self, p, e, cam, t):
@@ -907,6 +936,8 @@ class Scene:
                 q.drawEllipse(QRectF(int(x) - 2, y, 4, 5))
             p.fillRect(QRectF(int(x) - 1, y + 2, 2, 1), qc(mix(c, WHITE, 0.6)))
         self._blinks(p, e, cam, t, "fac", fac)
+        self._fires(p, e, cam, t)
+        self._walk_signals(p, e, cam, t)
         # Dampf aus Lüftungen
         for (L, y) in city.vents:
             x = fac.screen_x(L, cam)
@@ -922,6 +953,183 @@ class Scene:
             x = fac.screen_x(g["L"], cam)
             if -130 < x < W + 10:
                 self._gate(p, e, x, g, t)
+
+    def _fires(self, p, e, cam, t):
+        """Feuertonnen an der gegenüberliegenden Häuserfront: Flammenzungen + Lichthof."""
+        fac = self.city.fac if hasattr(self.city, "fac") else self.city.facade
+        halos = []
+        for (L, y, s, seed) in self.city.fires:
+            x = fac.screen_x(L, cam)
+            if x < -30 or x > W + 30:
+                continue
+            for q in (p, e):
+                for i in range(5):
+                    n = _hash(int(t * 11) + i * 7, seed + i)
+                    hx = x + (i - 2) * 1.3 + math.sin(t * 9 + i * 2.1 + seed) * 0.8
+                    h = s * (4 + 9 * n) * (1.0 if i in (1, 2, 3) else 0.6)
+                    col = (255, 236, 170) if i == 2 else ((255, 150, 40) if i % 2 else (230, 70, 30))
+                    q.setPen(Qt.PenStyle.NoPen)
+                    q.setBrush(qc(col))
+                    q.drawPolygon(QPolygonF([QPointF(hx - 1.6, y + 1), QPointF(hx + 1.6, y + 1),
+                                             QPointF(hx + math.sin(t * 13 + i) * 1.2, y - h)]))
+            if _hash(int(t * 7), seed) < 0.18:      # Funke
+                fy_ = y - 6 - 18 * _hash(int(t * 7) + 1, seed)
+                for q in (p, e):
+                    q.fillRect(QRectF(int(x + 6 * (_hash(int(t * 7) + 2, seed) - 0.5)), int(fy_), 1, 1),
+                               qc((255, 200, 120)))
+            halos.append((x, y - 4, 26 + 4 * math.sin(t * 7 + seed)))
+        if halos:
+            p.setCompositionMode(PLUS)
+            for (hx, hy, r) in halos:
+                g = QRadialGradient(hx, hy, r)
+                g.setColorAt(0, QColor(255, 140, 50, 70))
+                g.setColorAt(0.5, QColor(255, 110, 40, 22))
+                g.setColorAt(1, QColor(0, 0, 0, 0))
+                p.fillRect(QRectF(hx - r, hy - r, 2 * r, 2 * r), QBrush(g))
+            p.setCompositionMode(OVER)
+
+    # 7x7-Piktogramme wie im Film: Pfeil nach oben (grün) und die rote Hand
+    _ARROW = ("...#...", "..###..", ".#####.", "#######", "..###..", "..#.#..", "..###..")
+    _HAND = ("#.#.#..", "#.#.#.#", "#.#.#.#", "#######", "######.", ".#####.", "..###..")
+
+    def _walk_icon(self, p, e, bx, y, sz, t, ph):
+        """Ein Ampelpaar (grüner Pfeil / rote Hand) bei bx,y; sz = Feldgröße in Pixeln."""
+        ph_t = (t + ph) % 9.0
+        go = ph_t < 4.0
+        blink = not go and ph_t > 7.6 and int(t * 4) % 2 == 0
+        cell = sz / 8.0
+        for k, (icon, col, lit) in enumerate(((self._ARROW, (40, 200, 150), go),
+                                              (self._HAND, (236, 70, 52), not go and not blink))):
+            x0 = bx + k * (sz + cell)
+            if self.dark > 0.4:
+                lit = False
+            fill = col if lit else mul(col, 0.3)
+            for q in ((p, e) if lit else (p,)):
+                q.fillRect(QRectF(x0, y, sz, sz + cell), qc(fill))
+            ink = qc((10, 12, 12) if lit else mul(col, 0.12))
+            for r, row in enumerate(icon):
+                for c_, ch in enumerate(row):
+                    if ch == "#":
+                        p.fillRect(QRectF(x0 + (c_ + 0.5) * cell, y + (r + 1) * cell, max(1.0, cell),
+                                          max(1.0, cell)), ink)
+
+    def _draw_tower(self, p, e, o, cam, t):
+        """Ampelturm als freistehendes Objekt (Schatten, Spiegelung, Umriss, Ampel live)."""
+        d = o["d"]
+        k = persp.ppu(d)
+        cx = persp.screen_x(o["x"], d, cam)
+        sc = k / persp.FACADE_PPU * o.get("size", 1.0)
+        if cx < -45 * sc or cx > W + 45 * sc:
+            return
+        gy = persp.ground_y(d)
+        key = ("tower", o["seed"], round(sc * 8) / 8, self.city.th["rim"])
+        hit = self._refl.get(key)
+        if hit is None:
+            img, em, ax, ay, walks, blinks = props.tower_sprite(o["seed"], round(sc * 8) / 8, self.city.th)
+            hit = self._refl[key] = (vehicles._outline(img), em, ax, ay, walks, blinks)
+        img, em, ax, ay, walks, blinks = hit
+        s = round(sc * 8) / 8
+        x0, y0 = int(cx) - ax, int(gy) - ay
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(0, 0, 0, 120))
+        p.drawEllipse(QRectF(cx - 16 * s, gy - 2 * s, 32 * s, 4 * s))
+        if gy < H:
+            p.setOpacity(min(1.0, 0.4 * getattr(self, "_reflk", 1.0)))
+            p.drawImage(x0, int(gy) - (img.height() - 1 - ay), self._mirror(img))
+            p.setOpacity(1.0)
+        p.drawImage(x0, y0, img)
+        e.drawImage(x0, y0, em)
+        for (L, y, ph, sz) in walks:
+            self._walk_icon(p, e, cx + L * s, gy + y * s, sz * s, t, ph)
+        for (_w, L, y, col, ph) in blinks:
+            if math.sin(t * 2.2 + ph * 2.1) > 0.55 and self.dark < 0.4:
+                bx, by = cx + L * s, gy + y * s
+                for q in (p, e):
+                    q.fillRect(QRectF(bx - s, by - s, 2 * s, 2 * s), qc(col))
+
+    NEAR_BLUR = 2            # Unschärfe der kameranahen Ebene (Vordergrund-Kabel: 3)
+    WIRE_SHARP = 1.15        # Kabelstücke ab dieser Tiefe kommen in die unscharfe Ebene
+
+    def _near_layer(self, p, e, cam, t):
+        """Kabel quer über die Straße (hinten scharf, vorn leicht unscharf) und die
+        kameranahen Ampeltürme - beide in einer eigenen, weichgezeichneten Ebene."""
+        wires = self._wire_segments(cam, t)
+        if not wires and not self._near:
+            return
+        nb = self._nb_img
+        nb.fill(0)
+        q = QPainter(nb)
+        q.translate(p.transform().dx(), p.transform().dy())
+        for o in self._near:
+            self._draw_tower(q, e, o, cam, t)
+        rim = self.city.th["rim"]
+        hl = QPen(QColor(rim[0], rim[1], rim[2], 60))
+        hl.setWidthF(1.0)
+        for (pts, wd, col, near) in wires:
+            pen = QPen(qc(col))
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            for i in range(len(pts) - 1):
+                pen.setWidthF(max(1.0, wd[i]))
+                tgt = q if near[i] else p
+                tgt.setPen(pen)
+                tgt.drawLine(pts[i], pts[i + 1])
+                if wd[i] > 1.6:                        # Streiflicht oben: liest sich gegen den Himmel
+                    off = QPointF(0, -wd[i] * 0.45)
+                    tgt.setPen(hl)
+                    tgt.drawLine(pts[i] + off, pts[i + 1] + off)
+        p.setPen(Qt.PenStyle.NoPen)
+        q.end()
+        b = self.NEAR_BLUR
+        small = nb.scaled(W // b, H // b, Qt.AspectRatioMode.IgnoreAspectRatio,
+                          Qt.TransformationMode.SmoothTransformation)
+        p.save()
+        p.resetTransform()
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        p.drawImage(QRectF(0, 0, W, H), small)
+        p.restore()
+
+    def _wire_segments(self, cam, t):
+        """Bildschirm-Polylinien der Querkabel: (punkte, breiten, farbe, nah-flags)."""
+        out = []
+        city = self.city
+        ws = getattr(city, "wires", ())
+        if not ws:
+            return out
+        lo = cam - W / persp.ppu(-0.075) * 0.5 - 120
+        hi = cam + W / persp.ppu(-0.075) * 0.5 + 120
+        i0 = bisect.bisect_left([w["x"] for w in ws], lo)
+        n = 28
+        d_end = 2.4
+        for w in ws[i0:]:
+            if w["x"] > hi:
+                break
+            sway = math.sin(t * 0.6 + w["seed"]) * 3.0
+            for st in w["strands"]:
+                pts, wd, near = [], [], []
+                for j in range(n + 1):
+                    u = j / n
+                    d = -0.075 + (d_end + 0.075) * u
+                    hgt = w["h0"] + (w["h1"] - w["h0"]) * u - (w["sag"] + st["dsag"] + sway) * 4 * u * (1 - u) + st["dh"]
+                    k = persp.ppu(d)
+                    x = persp.screen_x(w["x"] + w["dx"] * u + st["dx"], d, cam)
+                    y = persp.ground_y(d) - hgt * k
+                    pts.append(QPointF(x, y))
+                    wd.append(st["w"] * k)
+                    near.append(d > self.WIRE_SHARP)
+                    if y < -30 and u > 0.5:
+                        break
+                if len(pts) > 1:
+                    out.append((pts, wd, w["col"], near))
+        return out
+
+    def _walk_signals(self, p, e, cam, t):
+        """Fußgängerampeln der Ampeltürme: grünes Feld mit Pfeil / rotes Feld mit Hand,
+        im Wechsel; das jeweils andere Feld glimmt nur."""
+        fac = self.city.facade
+        for (L, y, ph, sz) in self.city.walks:
+            x = int(fac.screen_x(L, cam))
+            if -24 <= x <= W + 24:
+                self._walk_icon(p, e, x, y, sz, t, ph)
 
     def _gate(self, p, e, x, g, t):
         open_ = self._gate_open
@@ -1093,6 +1301,465 @@ class Scene:
         p.setCompositionMode(OVER)
         self.fx.draw_splashes(p, mix(city.th["fog"], PALE, 0.5))
 
+    # ------------------------------------------------------------------ Überbauten
+    D_FAR = config.FACADE_DEPTH
+    D_NEAR = 1.7
+
+    @staticmethod
+    def _pt(x, d, h, cam):
+        return QPointF(persp.screen_x(x, d, cam), persp.ground_y(d) - h * persp.ppu(d))
+
+    @staticmethod
+    def _hull(pts):
+        pts = sorted(set((round(q.x(), 2), round(q.y(), 2)) for q in pts))
+        if len(pts) < 3:
+            return QPolygonF([QPointF(x, y) for x, y in pts])
+
+        def cross(o, a, b):
+            return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+        lo, hi = [], []
+        for q in pts:
+            while len(lo) >= 2 and cross(lo[-2], lo[-1], q) <= 0:
+                lo.pop()
+            lo.append(q)
+        for q in reversed(pts):
+            while len(hi) >= 2 and cross(hi[-2], hi[-1], q) <= 0:
+                hi.pop()
+            hi.append(q)
+        return QPolygonF([QPointF(x, y) for x, y in lo[:-1] + hi[:-1]])
+
+    def _spans_on(self, cam):
+        for s in getattr(self.city, "spans", ()):
+            a = min(persp.screen_x(s["x0"], self.D_NEAR, cam), persp.screen_x(s["x0"], self.D_FAR, cam))
+            b = max(persp.screen_x(s["x1"], self.D_NEAR, cam), persp.screen_x(s["x1"], self.D_FAR, cam))
+            if b > -30 and a < W + 30:
+                yield s
+
+    def _span_volume(self, s, cam):
+        """Bildschirm-Polygon des Raums unter dem Überbau (trocken, dunkler)."""
+        return self._hull([self._pt(x, d, h, cam) for x in (s["x0"], s["x1"])
+                           for d in (self.D_FAR, self.D_NEAR) for h in (0.0, s["hu"])])
+
+    def _span_clip(self, cam):
+        reg = None
+        for s in self._spans_on(cam):
+            r = QRegion(self._span_volume(s, cam).toPolygon()).united(QRegion(self._hull(
+                [self._pt(x, d, h, cam) for x in (s["x0"], s["x1"]) for d in (self.D_FAR, self.D_NEAR)
+                 for h in (s["hu"], s["hu"] + s["t"])]).toPolygon()))
+            reg = r if reg is None else reg.united(r)
+        return reg
+
+    def _spans_back(self, p, e, cam, t):
+        """Brücken / überhängende Gebäude: Schatten am Boden, Pfeiler, Baukörper, Lichter."""
+        th = self.city.th
+        rim = th["rim"]
+        P = self._pt
+        for s in self._spans_on(cam):
+            x0, x1, hu, T, col = s["x0"], s["x1"], s["hu"], s["t"], s["col"]
+            bridge = s["kind"] == "bridge"
+            p.setPen(Qt.PenStyle.NoPen)
+            # Schatten auf Gehweg/Fahrbahn und an der Hauswand darunter
+            sh = 150 if bridge else 120
+            p.setBrush(QColor(0, 0, 0, sh))
+            p.drawPolygon(QPolygonF([P(x0, self.D_FAR, 0, cam), P(x1, self.D_FAR, 0, cam), P(x1, 1.3, 0, cam),
+                                     P(x0, 1.3, 0, cam)]))
+            p.setBrush(QColor(0, 0, 0, sh))
+            p.drawPolygon(QPolygonF([P(x0, self.D_FAR, hu, cam), P(x1, self.D_FAR, hu, cam),
+                                     P(x1, self.D_FAR, 0, cam), P(x0, self.D_FAR, 0, cam)]))
+            # Pfeiler (Brücke) auf der anderen Straßenseite
+            for pier in s["piers"]:
+                d = -0.035
+                k = persp.ppu(d)
+                xp = persp.screen_x(pier, d, cam)
+                pw = 20 * k
+                gy = persp.ground_y(d)
+                top = gy - hu * k
+                g = QLinearGradient(0, top, 0, gy)
+                g.setColorAt(0, qc(mul(col, 0.6)))
+                g.setColorAt(1, qc(mul(col, 1.5)))
+                p.fillRect(QRectF(xp - pw / 2, top, pw, gy - top), QBrush(g))
+                e.fillRect(QRectF(xp - pw / 2, top, pw, gy - top), QColor(0, 0, 0))
+                p.fillRect(QRectF(xp - pw / 2, top, 1, gy - top), qc(mul(rim, 0.45)))
+                p.fillRect(QRectF(xp + pw / 2 - 3, top, 3, gy - top), qc(mul(col, 0.5)))
+                p.fillRect(QRectF(xp - pw / 2 - 2, gy - 6, pw + 4, 6), qc(mul(col, 1.2)))
+                for yy in range(int(top) + 8, int(gy) - 8, 14):
+                    p.fillRect(QRectF(xp - pw / 2 + 1, yy, pw - 4, 1), qc(mul(col, 0.8)))
+            # Baukörper
+            corners = [P(x, d, h, cam) for x in (x0, x1) for d in (self.D_FAR, self.D_NEAR) for h in (hu, hu + T)]
+            hull = self._hull(corners)
+            yb = P(x0, self.D_FAR, hu, cam).y()
+            lit = mix(col, rim, 0.22)
+            g = QLinearGradient(0, yb - 70, 0, yb)
+            g.setColorAt(0, qc(mul(col, 0.45)))
+            g.setColorAt(0.75, qc(col))
+            g.setColorAt(1, qc(lit))
+            p.setBrush(QBrush(g))
+            p.drawPolygon(hull)
+            e.setPen(Qt.PenStyle.NoPen)
+            e.setBrush(QColor(0, 0, 0))                 # verdeckt das Leuchten dahinter
+            e.drawPolygon(hull)
+            # sichtbare Stirnseite
+            for x, vis in ((x0, cam < x0), (x1, cam > x1)):
+                if not vis:
+                    continue
+                face = self._hull([P(x, d, h, cam) for d in (self.D_FAR, self.D_NEAR) for h in (hu, hu + T)])
+                p.setBrush(qc(mul(col, 0.8)))
+                p.drawPolygon(face)
+                if bridge:
+                    # Fachwerkträger zwischen Unter- und Obergurt
+                    pen = QPen(qc(mul(lit, 0.8)))
+                    p.setPen(pen)
+                    dd, up = self.D_FAR, True
+                    while dd < self.D_NEAR:
+                        d2 = dd + 0.09
+                        p.drawLine(P(x, dd, hu if up else hu + T, cam), P(x, d2, hu + T if up else hu, cam))
+                        p.drawLine(P(x, d2, hu, cam), P(x, d2, hu + T, cam))
+                        dd, up = d2, not up
+                    pen = QPen(qc(mul(rim, 0.7)))
+                    p.setPen(pen)
+                    p.drawLine(P(x, self.D_FAR, hu + T, cam), P(x, self.D_NEAR, hu + T, cam))
+                    p.setPen(Qt.PenStyle.NoPen)
+                    for k in range(6):            # Geländerleuchten
+                        q_ = P(x, self.D_FAR + 0.15 + k * 0.22, hu + T + 2, cam)
+                        for q in (p, e):
+                            q.fillRect(QRectF(q_.x() - 1, q_.y() - 1, 2, 2), qc(AMBER))
+                else:
+                    # Stirnwand des Überhangs: Fensterreihen in die Tiefe
+                    wins = self.city.th["win"]
+                    rr = random.Random(s["seed"])
+                    for row in range(6):
+                        h = hu + 14 + row * 16
+                        dd = self.D_FAR + 0.04
+                        while dd < self.D_NEAR - 0.1:
+                            a, b = P(x, dd, h, cam), P(x, dd + 0.05, h + 7, cam)
+                            on = rr.random() < 0.35
+                            c = mul(wins[rr.randrange(len(wins))][0], 0.6) if on else mul(col, 0.45)
+                            poly = QPolygonF([a, P(x, dd + 0.05, h, cam), b, P(x, dd, h + 7, cam)])
+                            p.setBrush(qc(c))
+                            p.drawPolygon(poly)
+                            if on:
+                                e.setBrush(qc(mul(c, 0.5)))
+                                e.drawPolygon(poly)
+                            dd += 0.09
+                pen = QPen(qc(mul(rim, 0.8)))
+                p.setPen(pen)
+                p.drawLine(P(x, self.D_FAR, hu, cam), P(x, self.D_NEAR, hu, cam))
+                p.setPen(Qt.PenStyle.NoPen)
+            # Unterkante zur Straße hin
+            pen = QPen(qc(mul(rim, 0.5)))
+            p.setPen(pen)
+            p.drawLine(self._pt(x0, self.D_FAR, hu, cam), self._pt(x1, self.D_FAR, hu, cam))
+            p.setPen(Qt.PenStyle.NoPen)
+            self._span_lights(p, e, s, cam, t)
+
+    def _span_lights(self, p, e, s, cam, t):
+        x0, x1, hu = s["x0"], s["x1"], s["hu"]
+        w = x1 - x0
+        dark = self.dark > 0.4
+        pools = []
+        if s["kind"] == "bridge":
+            # Natriumlampen an kurzen Abhängern unter dem Deck
+            for f in (0.3, 0.7):
+                d = 0.12
+                x = x0 + w * f
+                top = self._pt(x, d, hu, cam)
+                lamp = self._pt(x, d, hu - 16, cam)
+                p.setPen(QPen(qc((14, 14, 16))))
+                p.drawLine(top, lamp)
+                p.setPen(Qt.PenStyle.NoPen)
+                c = (255, 160, 70)
+                if not dark:
+                    for q in (p, e):
+                        q.fillRect(QRectF(lamp.x() - 2, lamp.y(), 5, 2), qc(c))
+                    pools.append((x, d, c, 0.9))
+            # rote Positionslichter an der Kante
+            for k in range(4):
+                if (int(t * 1.5) + k) % 4 == 0 and not dark:
+                    q_ = self._pt(x0 + w * (k + 0.5) / 4, self.D_FAR, hu, cam)
+                    for q in (p, e):
+                        q.fillRect(QRectF(q_.x(), q_.y() - 1, 2, 2), qc(RED))
+        else:
+            # Neonröhren unter der Vorderkante (wie die Lichtschläuche im Film)
+            for i, c in enumerate(s["tubes"]):
+                a = self._pt(x0 + 6, self.D_FAR, hu, cam)
+                b = self._pt(x1 - 6, self.D_FAR, hu, cam)
+                y = a.y() + 3 + i * 4
+                n = 6
+                for j in range(n):
+                    if _hash(j + i * 11, s["seed"]) < 0.18:
+                        continue                       # kaputtes Segment
+                    flick = _hash(int(t * 14) + j, s["seed"] + i) < 0.03
+                    xa = a.x() + (b.x() - a.x()) * j / n + 1
+                    xb = a.x() + (b.x() - a.x()) * (j + 1) / n - 1
+                    cc = mul(c, 0.25) if (dark or flick) else c
+                    for q in ((p,) if dark or flick else (p, e)):
+                        q.fillRect(QRectF(xa, y, xb - xa, 2), qc(cc))
+                    p.fillRect(QRectF(xa, y + 2, xb - xa, 1), qc(mul(cc, 0.35)))
+                if not dark:
+                    pools.append((x0 + w * 0.5, 0.05 + 0.1 * i, c, 0.55))
+            # hängende Schilder
+            for (f, c, word, drop, sd) in s["signs"]:
+                x = x0 + w * f
+                top = self._pt(x, self.D_FAR + 0.03, hu, cam)
+                tw = pixfont.text_width(word)
+                bx, by = int(top.x()), int(top.y() + drop)
+                p.setPen(QPen(qc((16, 16, 18))))
+                p.drawLine(QPointF(bx + 2, top.y()), QPointF(bx + 2, by))
+                p.drawLine(QPointF(bx + tw + 4, top.y()), QPointF(bx + tw + 4, by))
+                p.setPen(Qt.PenStyle.NoPen)
+                p.fillRect(QRectF(bx, by, tw + 7, 10), qc((10, 12, 14)))
+                lit = not dark and _hash(int(t * 9), sd) > 0.02
+                for q in ((p, e) if lit else (p,)):
+                    pixfont.draw(q, bx + 4, by + 2, word, c if lit else mul(c, 0.3), 1, None)
+        # Lichtpfützen am Boden unter den Lampen
+        if pools:
+            p.setCompositionMode(PLUS)
+            for (x, d, c, k) in pools:
+                gx, gy = persp.screen_x(x, d, cam), persp.ground_y(d)
+                r = 46 * persp.scale(d)
+                rg = QRadialGradient(gx, gy, r)
+                rg.setColorAt(0, QColor(c[0], c[1], c[2], int(90 * k)))
+                rg.setColorAt(1, QColor(0, 0, 0, 0))
+                p.save()
+                p.translate(gx, gy)
+                p.scale(1.0, 0.35)
+                p.translate(-gx, -gy)
+                p.fillRect(QRectF(gx - r, gy - r, 2 * r, 2 * r), QBrush(rg))
+                p.restore()
+            p.setCompositionMode(OVER)
+
+    def _spans_front(self, p, e, cam, t):
+        """Unter dem Überbau ist es dunkler; von den Kanten tropft das Regenwasser."""
+        th = self.city.th
+        drip = mix(th["fog"], PALE, 0.6)
+        for s in self._spans_on(cam):
+            # unter dem Überbau ist es dunkler - auch auf den Leuten (Leuchtendes glüht weiter)
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor(0, 0, 0, 70 if s["kind"] == "bridge" else 45))
+            p.drawPolygon(self._span_volume(s, cam))
+            # Wasservorhang an den Stirnkanten
+            for x in (s["x0"], s["x1"]):
+                for k in range(14):
+                    d = self.D_FAR + (k + _hash(k, s["seed"])) * 0.09
+                    if d > 1.2:
+                        break
+                    q_ = self._pt(x, d, s["hu"], cam)
+                    gy = persp.ground_y(d)
+                    ph = (t * (1.6 + _hash(k, 7)) + _hash(k, s["seed"] + 3)) % 1.0
+                    y = q_.y() + (gy - q_.y()) * ph
+                    ln = 3 + 8 * persp.scale(d)
+                    p.fillRect(QRectF(q_.x(), y, 1, ln), qc(drip, 120))
+
+    # ------------------------------------------------------------------ Radfahrer (Kulisse)
+    # je Zone: (mittlerer Abstand s, Gruppengröße min/max). Nur ab und zu ein Pulk wie im
+    # Film - nie ein Dauerstrom.
+    BIKE_RATE = [(55.0, 3, 4), (45.0, 3, 4), (30.0, 3, 6), (60.0, 3, 4), (0.0, 0, 0)]
+    CADENCE = 6.5                    # rad/s Kurbel (~1 Umdrehung pro Sekunde, gemütlich)
+    BIKE_BANDS = ((0.10, 0.14), (0.42, 0.46))
+    PONCHO = [(40, 44, 40), (62, 52, 42), (30, 40, 50), (70, 40, 36), (52, 56, 60), (36, 30, 28)]
+
+    def _draw_dove(self, p, e, dv, cam):
+        """Weiße Taube: Körper, zwei Flügel im Schlag, leicht leuchtend im Gegenlicht."""
+        d = dv["d"]
+        k = persp.ppu(d) * 2.2
+        x = persp.screen_x(dv["x"], d, cam)
+        y = persp.ground_y(d) - dv["z"] * persp.ppu(d)
+        if y < -20:
+            return
+        flap = math.sin(dv["t"] * 15.0)
+        body = (236, 240, 240)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setCompositionMode(PLUS)                # weicher Schein, damit sie im Regen lesbar bleibt
+        g = QRadialGradient(x, y, 10 * k)
+        g.setColorAt(0, QColor(200, 210, 220, 60))
+        g.setColorAt(1, QColor(0, 0, 0, 0))
+        p.fillRect(QRectF(x - 10 * k, y - 10 * k, 20 * k, 20 * k), QBrush(g))
+        p.setCompositionMode(OVER)
+        for q, a in ((p, 255), (e, 120)):
+            q.setPen(Qt.PenStyle.NoPen)
+            q.setBrush(QColor(body[0], body[1], body[2], a))
+            q.drawEllipse(QRectF(x - 2.2 * k, y - 1.0 * k, 4.4 * k, 2.0 * k))
+            q.drawEllipse(QRectF(x + 1.6 * k, y - 1.6 * k, 1.6 * k, 1.4 * k))          # Kopf
+            for s_ in (-1, 1):
+                tip_y = y - flap * 3.4 * k * s_ ** 2
+                q.drawPolygon(QPolygonF([QPointF(x - 1.2 * k, y), QPointF(x + 1.0 * k, y),
+                                         QPointF(x - 0.4 * k + s_ * 0.6 * k, tip_y - 0.6 * k)]))
+            q.drawPolygon(QPolygonF([QPointF(x - 2.0 * k, y - 0.3 * k), QPointF(x - 3.6 * k, y - 0.9 * k),
+                                     QPointF(x - 3.6 * k, y + 0.5 * k)]))                    # Schwanz
+        p.fillRect(QRectF(x + 2.8 * k, y - 1.1 * k, max(1.0, 0.6 * k), max(1.0, 0.4 * k)), qc((200, 150, 90)))
+
+    # ------------------------------------------------------------------ Müll im Wind
+    # je Zone: (mittlerer Abstand der Böen s, Stücke je Böe). Tyrell ist sauber.
+    LITTER = [(9.0, (3, 7)), (16.0, (2, 4)), (14.0, (2, 5)), (10.0, (3, 6)), (0.0, (0, 0))]
+    PAPER = [(170, 166, 150), (140, 146, 140), (120, 108, 88), (190, 150, 110), (90, 96, 92)]
+
+    def _update_litter(self, dt, cam):
+        rate, (nmin, nmax) = self.LITTER[self.city.zone % 5]
+        for m in self.litter:
+            m["x"] += m["vx"] * dt
+            m["ph"] += m["spin"] * dt
+            m["t"] += dt
+            # Auftrieb in Böen, dann taumelnd wieder runter
+            m["vz"] += (-9.0 + 22.0 * max(0.0, math.sin(m["t"] * 1.7 + m["seed"]))) * dt
+            m["vz"] = max(-14.0, min(16.0, m["vz"]))
+            m["z"] = max(0.0, m["z"] + m["vz"] * dt)
+            if m["z"] <= 0.0:
+                m["vx"] *= max(0.0, 1.0 - 1.6 * dt)        # liegt: Reibung, kommt fast zur Ruhe
+                m["vz"] = max(0.0, m["vz"])
+        half = W / 2 / persp.ppu(0.3) + 80
+        self.litter = [m for m in self.litter if abs(m["x"] - cam) < half + 60][-40:]
+        if rate <= 0:
+            return
+        self._gust -= dt
+        if self._gust > 0:
+            return
+        rng = self.rng
+        self._gust = rng.uniform(0.5, 1.5) * rate
+        side = rng.choice((-1, 1))
+        v = -side * rng.uniform(55, 95)
+        for _ in range(rng.randint(nmin, nmax)):
+            d = rng.uniform(0.05, 1.0)
+            self.litter.append(dict(x=cam + side * (W / 2 / persp.ppu(d) + rng.uniform(5, 60)), d=d,
+                                    z=rng.uniform(2, 26), vz=rng.uniform(-2, 8), vx=v * rng.uniform(0.7, 1.2),
+                                    ph=rng.uniform(0, 6.28), spin=rng.uniform(5, 12) * rng.choice((-1, 1)),
+                                    t=0.0, seed=rng.uniform(0, 6.28), col=rng.choice(self.PAPER),
+                                    w=rng.uniform(3.0, 6.0)))
+
+    def _draw_litter(self, p, m, cam):
+        """Ein Blatt Papier, das sich im Wind dreht (Breite pulsiert mit der Drehung)."""
+        d = m["d"]
+        k = persp.ppu(d)
+        x = persp.screen_x(m["x"], d, cam)
+        if x < -10 or x > W + 10:
+            return
+        gy = persp.ground_y(d)
+        y = gy - m["z"] * k
+        w = max(1.0, m["w"] * k * abs(math.cos(m["ph"])))
+        h = max(1.0, m["w"] * k * 0.6 * abs(math.sin(m["ph"] * 0.7)) + 0.6)
+        col = mix(m["col"], self.city.th["fog"], 0.3 * (1 - d))
+        lit = 0.75 + 0.35 * math.cos(m["ph"])           # Vorder-/Rückseite fangen das Licht verschieden
+        p.setPen(Qt.PenStyle.NoPen)
+        if m["z"] > 0.5:
+            p.fillRect(QRectF(x - w / 2, gy - 0.5, w, 1), QColor(0, 0, 0, 60))
+        p.fillRect(QRectF(x - w / 2, y - h / 2, w, h), qc(mul(col, lit)))
+
+    def _update_bikes(self, dt, cam):
+        rate, gmin, gmax = self.BIKE_RATE[self.city.zone % 5]
+        rng = self.rng
+        for b in self.bikes:
+            b["x"] += b["v"] * dt
+            b["ph"] += self.CADENCE * dt * abs(b["v"]) / 50.0
+        k = persp.ppu(0.1)
+        half = W / 2 / k + 60
+        self.bikes = [b for b in self.bikes if abs(b["x"] - cam) < half + 160]
+        if rate <= 0:
+            return
+        self._bike_next -= dt
+        if self._bike_next > 0:
+            return
+        self._bike_next = rng.uniform(0.6, 1.4) * rate
+        side = rng.choice((-1, 1))
+        v = -side * rng.uniform(40, 58)
+        band = rng.choice(self.BIKE_BANDS)
+        d0 = rng.uniform(*band)
+        x0 = cam + side * half
+        for j in range(rng.randint(gmin, gmax)):
+            self.bikes.append(dict(x=x0 + side * (j * rng.uniform(14, 26)), d=d0 + rng.uniform(-0.02, 0.02),
+                                   v=v * rng.uniform(0.92, 1.06), ph=rng.uniform(0, 6.28),
+                                   poncho=rng.choice(self.PONCHO), hat=rng.random() < 0.7,
+                                   umb=rng.random() < 0.3, glow=rng.random() < 0.4, seed=rng.randint(0, 999)))
+
+    def _draw_bike(self, p, e, b, cam, t):
+        """Radfahrer im Poncho mit Kegelhut (Chinatown-Sequenz): Lampe am Lenker,
+        manchmal ein Schirm. Gezeichnet in Welt-Einheiten, skaliert mit der Tiefe."""
+        d = b["d"]
+        k = persp.ppu(d)
+        gx, gy = persp.screen_x(b["x"], d, cam), persp.ground_y(d)
+        if gx < -40 or gx > W + 40:
+            return
+        sd = 1 if b["v"] > 0 else -1
+        fog = self.city.th["fog"]
+        fk = 0.25 * (1 - d)            # hinten mehr im Dunst
+
+        def U(u, v):
+            return QPointF(gx + u * k * sd, gy - v * k)
+
+        def c_(col):
+            return qc(mix(col, fog, fk))
+        frame = (22, 24, 26)
+        # Schatten
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(0, 0, 0, 90))
+        p.drawEllipse(QRectF(gx - 10 * k, gy - 1.2 * k, 20 * k, 2.4 * k))
+        pen = QPen(c_(frame))
+        pen.setWidthF(max(1.0, 0.7 * k))
+        p.setPen(pen)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        for wx in (-7.0, 7.0):
+            c = U(wx, 4.5)
+            p.drawEllipse(c, 4.5 * k, 4.5 * k)
+        p.drawPolyline(QPolygonF([U(-7, 4.5), U(0, 5), U(-2, 12), U(-7, 4.5)]))
+        p.drawPolyline(QPolygonF([U(0, 5), U(6, 12), U(7, 4.5)]))
+        p.drawLine(U(6, 12), U(7, 14.5))
+        # Beine (Kurbel)
+        a = b["ph"]
+        hip = U(-2, 14)
+        for s_ in (0, math.pi):
+            pd = U(3 * math.cos(a + s_), 5 - 3 * math.sin(a + s_))   # oben vorwärts
+            kn = QPointF((hip.x() + pd.x()) / 2 + 3 * k * sd, (hip.y() + pd.y()) / 2 - 1.5 * k)
+            pen = QPen(c_((20, 20, 24) if s_ == 0 else (14, 14, 16)))
+            pen.setWidthF(max(1.0, 1.6 * k))
+            p.setPen(pen)
+            p.drawPolyline(QPolygonF([hip, kn, pd]))
+        # Poncho + Arm
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(c_(b["poncho"]))
+        p.drawPolygon(QPolygonF([U(-6, 13), U(5, 15), U(2, 27), U(-1, 27.5)]))
+        pen = QPen(c_(mul(b["poncho"], 0.7)))
+        pen.setWidthF(max(1.0, 1.4 * k))
+        p.setPen(pen)
+        p.drawLine(U(1, 25), U(6.5, 14.5))
+        p.setPen(Qt.PenStyle.NoPen)
+        # Kopf + Kegelhut / Kapuze
+        p.setBrush(c_((120, 96, 80)))
+        p.drawEllipse(U(1, 30), 2.4 * k, 2.6 * k)
+        if b["hat"]:
+            p.setBrush(c_((128, 108, 76)))
+            p.drawPolygon(QPolygonF([U(-5, 30.6), U(7, 30.6), U(1, 35.5)]))
+            p.setBrush(c_((90, 74, 52)))
+            p.drawPolygon(QPolygonF([U(-5, 30.6), U(7, 30.6), U(1, 31.6)]))
+        else:
+            p.setBrush(c_(mul(b["poncho"], 0.8)))
+            p.drawEllipse(U(0.6, 31), 3.0 * k, 3.0 * k)
+        # Schirm (Papierschirm, manchmal mit leuchtendem Schaft)
+        if b["umb"]:
+            shaft = CYAN if b["glow"] else (50, 46, 40)
+            pen = QPen(qc(shaft))
+            pen.setWidthF(max(1.0, 0.6 * k))
+            for q in ((p, e) if b["glow"] else (p,)):
+                q.setPen(pen)
+                q.drawLine(U(3, 22), U(1, 41))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(c_((176, 146, 100)))
+            p.drawPolygon(QPolygonF([U(-10, 37), U(1, 43), U(12, 37), U(1, 39)]))
+        # Lampe am Lenker + Lichtkegel auf dem Boden
+        if True:
+            hl = U(7.4, 13)
+            for q in (p, e):
+                q.fillRect(QRectF(hl.x() - 1, hl.y() - 1, 2, 2), qc((255, 246, 210)))
+            p.setCompositionMode(PLUS)
+            g = QRadialGradient(gx + 20 * k * sd, gy, 16 * k)
+            g.setColorAt(0, QColor(255, 240, 200, 60))
+            g.setColorAt(1, QColor(0, 0, 0, 0))
+            p.save()
+            p.translate(gx + 20 * k * sd, gy)
+            p.scale(1.0, 0.3)
+            p.translate(-(gx + 20 * k * sd), -gy)
+            p.fillRect(QRectF(gx + 4 * k * sd - 16 * k if sd > 0 else gx - 36 * k, gy - 16 * k, 32 * k, 32 * k),
+                       QBrush(g))
+            p.restore()
+            p.setCompositionMode(OVER)
+
     # ------------------------------------------------------------------ Figuren
     def _rim_for(self, a, cam):
         best, bd = None, 110.0
@@ -1129,6 +1796,8 @@ class Scene:
         if patrol is not None and patrol.get("alt", 1.0) < 1.0:
             items.append((config.LAND_DEPTH, 3, patrol))
         items += [(o["depth"], 4, o) for o in getattr(world, "origami", ()) if not o["taken"]]
+        items += [(b["d"], 6, b) for b in self.bikes]
+        items += [(m["d"], 7, m) for m in self.litter]
         items.sort(key=lambda it: it[0])
         for _d, kind, obj in items:
             if kind == 0:
@@ -1142,6 +1811,10 @@ class Scene:
                 self._draw_landing(p, e, obj, cam, t)
             elif kind == 5:
                 self._draw_steam(p, e, obj, cam, t)
+            elif kind == 6:
+                self._draw_bike(p, e, obj, cam, t)
+            elif kind == 7:
+                self._draw_litter(p, obj, cam)
             else:
                 self._draw_origami(p, e, obj, cam, t)
 
@@ -1164,7 +1837,8 @@ class Scene:
         if lit:
             rim, fog = WHITE, 0.0
         outline = (4, 5, 10)
-        if not a.alive and a.dead_t > 0.5:
+        peaceful = getattr(a, "peaceful", False)
+        if not a.alive and a.dead_t > 0.5 and not peaceful:
             # „Kreide“-Umriss: liegende Körper bleiben auf dem nassen Asphalt lesbar
             outline = (150, 40, 64) if not a.is_replicant else (120, 170, 190)
         img, em, ax, ay, meta = sprites.get(a.look, a.anim, getattr(a, "frame", 0), hgt, a.facing,
@@ -1173,7 +1847,7 @@ class Scene:
         x0, y0 = int(cx) - ax, int(gy) - ay - lift
         if not a.alive:
             # Lache: Menschen dunkelrot, Replikanten milchig-weiß
-            k = min(1.0, a.dead_t / 2.5)
+            k = 0.0 if peaceful else min(1.0, a.dead_t / 2.5)
             if k > 0.05:
                 rw = hgt * (0.3 + 0.6 * k)
                 px_ = cx + meta["head"][0] * 0.55 - rw / 2
@@ -1492,6 +2166,12 @@ class Scene:
         if o["kind"] == "parked":
             self._draw_parked(p, e, o, cam, t)
             return
+        if o["kind"] == "tower":
+            if o["d"] > 1.0:
+                self._near.append(o)            # vor der Kamera: eigene, leicht unscharfe Ebene
+            else:
+                self._draw_tower(p, e, o, cam, t)
+            return
         d = o["d"]
         k = persp.ppu(d)
         cx = persp.screen_x(o["x"], d, cam)
@@ -1510,6 +2190,7 @@ class Scene:
         e.drawImage(x0, y0, em)
         kind = o["kind"]
         light = None
+        k = k * vehicles.OB_SCALE.get(kind, 1.0)      # Zeichenmaßstab wie im Bild
         if kind == "barrier" and int(t * 2.5 + o["seed"]) % 2 == 0:
             for q in (p, e):
                 q.fillRect(QRectF(cx - 1 * k, gy - 12 * k, 2 * k + 1, 2 * k + 1), qc(AMBER))
@@ -1799,31 +2480,141 @@ class Scene:
                 e.fillRect(QRectF(int(x), int(y), 1, 1), qc(c))
 
     # ------------------------------------------------------------------ Vordergrund
+    # Vordergrund je Zone: (Art, Gewicht). Nur DÜNNE Dinge direkt vor der Kamera - Kabel,
+    # Masten, Rohre, Lampionschnüre. Die dicken Säulen stehen auf der anderen Straßenseite.
+    FG_KINDS = [
+        (("cable", 4), ("cables", 4), ("pole", 2), ("pipe", 2), ("none", 1)),
+        (("cable", 3), ("cables", 3), ("pole", 3), ("lanterns", 1), ("none", 1)),
+        (("cables", 4), ("lanterns", 4), ("pole", 2), ("cable", 2), ("none", 1)),
+        (("cable", 3), ("pipe", 3), ("pole", 2), ("cables", 3), ("none", 1)),
+        (("pole", 2), ("cable", 2), ("none", 4)),
+    ]
+    FG_DEPTH = 1.9           # sehr nah an der Kamera -> zieht schnell vorbei
+    FG_SPACING = 190.0
+    FG_BLUR = 3              # Unschärfe: Faktor des Herunterskalierens
+
     def _foreground(self, p, cam):
-        """Säulen/Masten sehr nah an der Kamera (Tiefe 1.35) und Kabel oben."""
-        d = 1.35
+        """Dünne Requisiten direkt vor der Kamera, außerhalb der Schärfeebene: Kabel mit
+        losen, pendelnden Enden, Masten mit Ampel/Schild, Rohre, Lampionschnüre. Eigene
+        Ebene, die vor dem Einsetzen weichgezeichnet wird (Tiefenunschärfe)."""
+        fg = self._fg_img
+        fg.fill(0)
+        fp = QPainter(fg)
+        drawn = self._fg_draw(fp, cam)
+        fp.end()
+        if not drawn:
+            return
+        b = self.FG_BLUR
+        small = fg.scaled(W // b, H // b, Qt.AspectRatioMode.IgnoreAspectRatio,
+                          Qt.TransformationMode.SmoothTransformation)
+        p.save()
+        p.resetTransform()
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        p.drawImage(QRectF(0, 0, W, H), small)
+        p.restore()
+
+    def _fg_draw(self, p, cam):
+        d = self.FG_DEPTH
         k = persp.ppu(d)
-        spacing = 620.0
+        spacing = self.FG_SPACING
+        t = self.t
+        th = self.city.th
+        z = self.city.zone % len(self.FG_KINDS)
+        kinds = self.FG_KINDS[z]
+        tot = sum(wt for _, wt in kinds)
+        dark = (5, 7, 9)
+        rim = mul(th["rim"], 0.3)
+        e = self._fg_e
+        drawn = False
         first = math.floor((cam - W / k) / spacing) - 1
-        for i in range(first, first + 4):
-            wx = i * spacing + 230 * _hash(i, 3)
+        for i in range(first, first + 7):
+            wx = i * spacing + 120 * _hash(i, 3)
             x = persp.screen_x(wx, d, cam)
-            if x < -40 or x > W + 40:
+            if x < -300 or x > W + 300:
                 continue
-            kind = _hash(i, 9)
-            if kind < 0.5:
-                w = 14
-                p.fillRect(QRectF(int(x), 0, w, H), qc((5, 6, 10)))
-                p.fillRect(QRectF(int(x) + w - 2, 0, 1, H), qc(mul(self.city.th["rim"], 0.35)))
-                p.fillRect(QRectF(int(x), int(H * 0.55), w, 3), qc(mul(self.city.th["neon"][0], 0.5)))
-            else:
-                # Hängendes Kabel quer durchs Bild
-                pen = QPen(qc((8, 9, 14)))
-                pen.setWidth(2)
+            r = _hash(i, 9 + z) * tot
+            kind = kinds[-1][0]
+            for kk, wt in kinds:
+                if r < wt:
+                    kind = kk
+                    break
+                r -= wt
+            if kind == "none":
+                continue
+            drawn = True
+            sway = math.sin(t * 0.9 + i * 1.7) * 3.0
+            if kind in ("cable", "cables", "lanterns"):
+                n = 1 if kind == "cable" else (2 + int(_hash(i, 4) * 2))
+                for j in range(n):
+                    y0 = -4 + 40 * _hash(i, 5 + j)
+                    y1 = -4 + 40 * _hash(i, 15 + j)
+                    span = 320 + 200 * _hash(i, 25 + j)
+                    sag = 18 + 34 * _hash(i, 35 + j)
+                    xa, xb = x - span / 2, x + span / 2
+                    pts = []
+                    for s_ in range(17):
+                        u = s_ / 16
+                        pts.append(QPointF(xa + (xb - xa) * u,
+                                           y0 + (y1 - y0) * u + (sag + sway) * 4 * u * (1 - u)))
+                    pen = QPen(qc(dark))
+                    pen.setWidth(5 if j == 0 else 3)
+                    p.setPen(pen)
+                    p.drawPolyline(QPolygonF(pts))
+                    if kind == "lanterns" and j == 0:
+                        p.setPen(Qt.PenStyle.NoPen)
+                        neon = th["neon"]
+                        for s_ in range(2, 15, 2):
+                            q_ = pts[s_]
+                            c = neon[int(_hash(i * 31 + s_, 2) * len(neon))]
+                            lit = self.dark < 0.4 and _hash(int(t * 3) + s_, i) > 0.04
+                            for q in ((e, p) if lit and e is not None else (p,)):
+                                q.setPen(Qt.PenStyle.NoPen)
+                                q.setBrush(qc(c if lit else mul(c, 0.3)))
+                                q.drawEllipse(QRectF(q_.x() - 6, q_.y() + 2, 12, 15))
+                    # loses Ende, pendelt im Wind
+                    if j == 0 and _hash(i, 45) < 0.7:
+                        q0 = pts[int(4 + 8 * _hash(i, 46))]
+                        ln = 40 + 90 * _hash(i, 47)
+                        ang = math.sin(t * 1.3 + i) * 0.14
+                        pen = QPen(qc(dark))
+                        pen.setWidth(3)
+                        p.setPen(pen)
+                        p.drawLine(q0, QPointF(q0.x() + math.sin(ang) * ln, q0.y() + math.cos(ang) * ln))
+                p.setPen(Qt.PenStyle.NoPen)
+            elif kind == "pole":
+                pw = 10
+                p.fillRect(QRectF(int(x), 0, pw, H), qc(dark))
+                p.fillRect(QRectF(int(x) + pw - 2, 0, 2, H), qc(rim))
+                hy = int(H * (0.14 + 0.14 * _hash(i, 6)))
+                if _hash(i, 7) < 0.5:       # Ampelkopf
+                    p.fillRect(QRectF(int(x) - 8, hy, 26, 50), qc((12, 12, 14)))
+                    st = int((t + _hash(i, 8) * 9) / 3.0) % 3
+                    pal = config.zone_look(self.city.zone)["pal"]
+                    for kk_, c in enumerate((pal[6], th["neon"][0], th["neon"][-1])):
+                        on = kk_ == st and self.dark < 0.4
+                        for q in ((p, e) if on and e is not None else (p,)):
+                            q.fillRect(QRectF(int(x) - 3, hy + 4 + kk_ * 15, 14, 11), qc(c if on else mul(c, 0.2)))
+                else:                       # Straßenschild
+                    word = ("NO STOPPING", "SECTOR 4", "DANGER", "ONE WAY", "CROSS NOW")[int(_hash(i, 10) * 5)]
+                    tw = pixfont.text_width(word, 2)
+                    p.fillRect(QRectF(int(x) - tw // 2 - 6, hy, tw + 12, 22), qc((14, 20, 24)))
+                    pixfont.draw(p, int(x) - tw // 2, hy + 4, word, mul(th["neon"][0], 0.5), 2, None)
+                pen = QPen(qc(dark))
+                pen.setWidth(3)
                 p.setPen(pen)
-                y0 = 10 + 18 * _hash(i, 5)
-                pts = [QPointF(x - 200 + j * 20, y0 + 26 * math.sin(math.pi * j / 20)) for j in range(21)]
-                p.drawPolyline(QPolygonF(pts))
+                p.drawLine(QPointF(x + 4, hy - 14), QPointF(x + 240, 10 + sway))
+                p.setPen(Qt.PenStyle.NoPen)
+            elif kind == "pipe":
+                pw = 12
+                bot = int(H * (0.22 + 0.18 * _hash(i, 11)))
+                p.fillRect(QRectF(int(x), 0, pw, bot), qc((10, 12, 14)))
+                p.fillRect(QRectF(int(x) + 2, 0, 2, bot), qc(rim))
+                for yy in range(20, bot, 46):
+                    p.fillRect(QRectF(int(x) - 4, yy, pw + 8, 6), qc((18, 20, 22)))
+                p.fillRect(QRectF(int(x) - 5, bot, pw + 10, 8), qc((12, 14, 16)))
+                ph = (t * 1.4 + _hash(i, 12)) % 1.0
+                p.fillRect(QRectF(int(x) + 5, bot + 8 + ph * (H - bot), 2, 6), qc(mix(th["fog"], PALE, 0.6), 160))
+        return drawn
 
     # ------------------------------------------------------------------ CRT-Einschalten
     def _power_on(self, p, k):

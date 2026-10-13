@@ -89,8 +89,20 @@ def main():
             st = [h for h in c.holos if h["kind"] == "street"]
             if st:
                 world.player.x = st[0]["L"] / c.facade.factor - 40
+        elif fl in ("--at=bridge", "--at=overhang"):
+            from shadegunner.render.city import City
+            c = City(zone, world.length, seed)
+            sp = [s for s in c.spans if s["kind"] == fl[5:]]
+            if sp:
+                world.player.x = (sp[0]["x0"] + sp[0]["x1"]) / 2 - 40
+        elif fl == "--at=sebastian":         # ROY steht vor Sebastians Haus und wartet
+            world.player.x = world.length - config.ROY_STAND - 200
+            world.stats["reps"] = world.quota
         elif fl.startswith("--at="):
             world.player.x = world.length * float(fl[5:])
+    for fl in flags:
+        if fl.startswith("--dx="):            # Kamera/Spieler relativ verschieben (z. B. vor/unter/nach Brücke)
+            world.player.x += float(fl[5:])
     world.camera_x = world.player.x + 40
     for fl in flags:
         # --veh=car,police,...: Fahrzeuge stehen still im Bild (Beauty-Shot der Modelle)
@@ -103,6 +115,13 @@ def main():
                                            kind=kind, L=L, h=hh, seed=i * 7, honk=True, uid=-5000 - i))
     sc = Scene(config.RENDER_W, config.RENDER_H)
     sc.ensure_zone(zone, seed, world.length)
+    if "--bikes" in flags:               # Radfahrer-Pulk mitten im Bild (Kulisse zeigen)
+        import random as _r
+        rr = _r.Random(3)
+        for j in range(5):
+            sc.bikes.append(dict(x=world.player.x - 60 + j * 30 + rr.uniform(-6, 6), d=(0.12, 0.44)[j % 2],
+                                 v=(48 if j % 2 else -50) * 0.02, ph=rr.uniform(0, 6), poncho=rr.choice(sc.PONCHO),
+                                 hat=j != 2, umb=j in (1, 3), glow=j == 3, seed=j))
     hud = None
     if "--hud" in flags:
         from shadegunner.hud import HUD
@@ -117,6 +136,14 @@ def main():
         config.SPINNER_LAND_CHANCE = 1.0
     if "--dark" in flags:
         world.blackout_at = frames * dt * 0.5
+    if "--roy" in flags:                 # ROY lässt ab: Monolog bis zur Taube (frames ~ 1700)
+        world.player.x = world.length - config.ROY_TRIGGER + 5
+        world.stats["reps"] = world.quota
+        world.update(dt, {})
+        world.player.x = world.boss.x - 90
+        world.update(dt, {})
+        world.boss_speak_t = 0.0
+        world.player.hp = 1
     for i in range(frames):
         if "--traffic" in flags and i == frames - 120:
             world.traffic_cd = 0.0
@@ -124,7 +151,7 @@ def main():
             for a in sorted(world.living(), key=lambda a: abs(a.x - world.player.x))[:3]:
                 world._kill(a)
         late = i > frames * 0.6
-        mv = 0.0 if "--still" in flags else (0.6 if not late else 0.0)
+        mv = 0.0 if ("--still" in flags or "--roy" in flags) else (0.6 if not late else 0.0)
         if "--shout" in flags and i == int(frames * 0.6):
             world.shout_crowd()
         if "--eye" in flags and i == frames - 30:
@@ -139,6 +166,8 @@ def main():
                    aim=late and "--aim" in flags,
                    scan=(i == int(frames * 0.6) + 1) and "--scan" in flags)
         world.update(dt, inp)
+        if "--gust" in flags and i == frames - 50:      # Windböe mit Papier (Kulisse)
+            sc._gust = 0.0
         t0 = time.perf_counter()
         img = sc.frame(world, dt)
         sc.consume(world, world.events)

@@ -181,6 +181,22 @@ TR = {
     "Tyrell": "Tyrell",
 
     # ---------------------------------------------------------------- ROY
+    "Nicht sehr sportlich, auf einen unbewaffneten Gegner zu schießen.":
+        "Not very sporting to fire on an unarmed opponent.",
+    "Ich dachte, du wärst gut. Bist du nicht der Gute?":
+        "I thought you were supposed to be good. Aren't you the good man?",
+    "Komm schon. Zeig mir, was du drauf hast!": "Come on. Show me what you're made of!",
+    "Stolz auf dich, kleiner Mann?": "Proud of yourself, little man?",
+    "Ganz schön, in Angst zu leben, nicht wahr? Das heißt es, ein Sklave zu sein.":
+        "Quite an experience to live in fear, isn't it? That's what it is to be a slave.",
+    "Zeit zu sterben.": "Time to die.",
+    "ROY lässt von dir ab.": "ROY lets go of you.",
+    "Er hat dir das Leben gerettet.": "He saved your life.",
+    "ROY HAT DICH VERSCHONT": "ROY SPARED YOU",
+    "SIE HABEN GANZE ARBEIT GELEISTET, SIR.": "YOU'VE DONE A MAN'S JOB, SIR.",
+    "SCHADE, DASS ER NICHT LEBEN WIRD.": "TOO BAD HE WON'T LIVE.",
+    "ABER WER LEBT SCHON?": "BUT THEN AGAIN, WHO DOES?",
+    "(SCHWEIGT)": "(SILENT)",
     "Ich habe Dinge gesehen, von denen ihr Menschen nicht einmal träumt.":
         "I've seen things you people wouldn't believe.",
     "Angriffsschiffe in Flammen vor der Schulter des Orion.":
@@ -333,6 +349,6 @@ TR = {
     "GLATZE": "BALD", "MÜTZE": "BEANIE", "PFERDESCHWANZ": "PONYTAIL", "LEUCHTVISIER": "GLOW VISOR",
     "AFRO": "AFRO", "LEUCHTSCHIRM": "GLOWING UMBRELLA",
     "dunkelblau": "dark blue", "blau": "blue", "grau": "grey", "rot": "red", "türkis": "teal",
-    "violett": "violet", "hellblau": "light blue", "schwarz": "black", "gelb": "yellow",
+    "violett": "violet", "grün": "green", "hellblau": "light blue", "schwarz": "black", "gelb": "yellow",
     "weiß": "white", "pink": "pink", "orange": "orange",
 }

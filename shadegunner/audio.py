@@ -500,20 +500,6 @@ def _np_sounds():
         R = np.roll(sig, int(sr * 0.012)) + 0.4 * fft_conv(sig, reverb_ir(sr, 2.2, 10))
         return stereo_out(L, R)
 
-    def thunder():
-        sr = SR
-        n = int(sr * 6.0)
-        t = np.arange(n) / sr
-        noise = rs.standard_normal(n)
-        crack = fft_bp(noise, 300, 4000, sr) * np.exp(-np.maximum(0, t - 0.6) * 8) * (t > 0.6)
-        rumble = fft_lp(noise, 160.0, sr) * 3.0
-        rumble *= np.clip((t - 0.7) / 0.6, 0, 1) * np.exp(-np.maximum(0, t - 1.3) * 0.75)
-        rumble *= 1.0 + 0.5 * np.sin(2 * math.pi * 1.3 * t) * np.sin(2 * math.pi * 0.37 * t)
-        sig = crack * 0.4 + rumble
-        L = sig
-        R = np.roll(sig, int(sr * 0.02))
-        return stereo_out(L, R)
-
     def blackout():
         sr = SR
         n = int(sr * 2.2)
@@ -812,7 +798,7 @@ def _np_sounds():
         L2, R2 = room.verb(3.5, 0.9, (23, 24))
         return stereo_out(L1 + L2, R1 + R2)
 
-    out = {"music": (soundtrack, MSR, True), "patrol": (patrol, SR, True), "thunder": (thunder, SR, True),
+    out = {"music": (soundtrack, MSR, True), "patrol": (patrol, SR, True),
            "blackout": (blackout, SR, True), "power_up": (power_up, SR, True)}
     for name, dur, t0, src, span in (
             ("spinner", 7.0, 3.4, spinner_src, 1.0),
@@ -875,7 +861,7 @@ def _lazy(name):
     return name.startswith("music_z") or name.startswith("pulse_z")
 VOLUME = {"music": 0.5, "rain": 0.16, "target": 0.25, "ui": 0.4, "shot": 0.55, "spinner_lr": 0.45,
           "spinner_rl": 0.45, "car_lr": 0.38, "car_rl": 0.38, "truck_lr": 0.45, "truck_rl": 0.45,
-          "bike_lr": 0.35, "bike_rl": 0.35, "patrol": 0.45, "thunder": 0.6, "honk": 0.75, "honk_meep": 0.5, "bump": 0.45,
+          "bike_lr": 0.35, "bike_rl": 0.35, "patrol": 0.45, "honk": 0.75, "honk_meep": 0.5, "bump": 0.45,
           "jump": 0.3,
           "land": 0.3, "scan": 0.4, "alert": 0.4}
 
@@ -1134,8 +1120,12 @@ class Audio:
         t = 0.8 * getattr(world, "unrest", 0.0)
         if getattr(world, "aiming", False):
             t = max(t, 0.55)
-        if getattr(world, "boss", None) is not None:
+        b = getattr(world, "boss", None)
+        if b is not None and b.alive and not getattr(world, "roy_mercy", False) \
+                and not getattr(world, "roy_waiting", False):
             t = max(t, 0.9)
+        if getattr(world, "roy_mercy", False) or getattr(world, "roy_spared", False):
+            return 0.0                    # nur noch Regen und seine Stimme
         if getattr(world, "blackout_t", 0) > 0:
             t = max(t, 0.5)
         run = getattr(world, "run", None)
@@ -1366,8 +1356,6 @@ class Audio:
                 self.play("bounty")
             elif k == "greet":
                 self.play("ui")
-            elif k == "thunder":
-                self.play("thunder")
             elif k == "blackout":
                 self.play("blackout")
             elif k == "blackout_end":

@@ -15,8 +15,9 @@ from .. import config
 from . import pixfont
 
 C = config.NOIR16
-CYAN, MAGENTA, AMBER, VIOLET, TEAL = C[12], C[13], C[14], C[15], C[11]
-PALE, WHITE, CRIMSON = C[9], C[10], C[6]
+CYAN, MAGENTA, AMBER, GREEN, TEAL = C[12], C[13], C[14], C[15], C[11]
+PALE, WHITE, RED, NBLUE = C[9], C[10], C[6], C[8]
+CRIMSON = (150, 28, 40)
 
 _CACHE = {}
 VEH_SCALE = 1.5    # Zeichnung in 2/3-Einheiten, Welt-Maße in sim.VEHICLES
@@ -32,12 +33,30 @@ BODY = {
     "truck": [(70, 66, 62), (78, 52, 40), (52, 64, 76), (64, 72, 54), (84, 74, 58), (56, 58, 70)],
     "bike": [(30, 30, 40), (90, 20, 50), (24, 50, 60), (70, 58, 30), (40, 44, 66), (88, 44, 36)],
     "limo": [(14, 14, 20), (30, 16, 26)],
+    "classic": [(70, 108, 106), (150, 140, 112), (90, 40, 44), (24, 24, 28), (96, 120, 140), (100, 136, 116),
+                (120, 92, 60), (60, 64, 70)],
     "bus": [(54, 60, 78), (70, 52, 60), (40, 66, 70), (72, 66, 44), (58, 44, 64), (46, 54, 54), (84, 72, 52)],
 }
-UNDERGLOW = [CYAN, MAGENTA, VIOLET, TEAL, AMBER]
+UNDERGLOW = [CYAN, MAGENTA, NBLUE, TEAL, AMBER, GREEN, RED]
 # Akzentfarbe für Zierlinien, Dächer, Schweller und Werbebanner
 ACCENT = [(196, 150, 52), (224, 72, 150), (64, 210, 220), (255, 138, 44),
           (122, 74, 168), (34, 96, 104), (138, 32, 56), (162, 168, 180)]
+_ZONE = [None]
+
+
+def set_zone(zone_index):
+    """Unterboden-Neon und Zierfarben aus der Zonenpalette (Farbkuratierung je Level)."""
+    global UNDERGLOW, ACCENT
+    if _ZONE[0] == zone_index:
+        return
+    _ZONE[0] = zone_index
+    neon = config.zone_colors(zone_index, "people")
+    UNDERGLOW = list(neon)
+    pal = config.zone_look(zone_index)["pal"]
+    ACCENT = list(neon) + [_mul(c, 0.7) for c in neon[:3]] + [pal[5]]
+    _CACHE.clear()
+
+
 LIVERY = ["TYRELL", "SHIMATA", "PAN AM", "OFF-WORLD", "NEXUS 6", "EYE WORKS",
           "DNA ROW", "KOBAYASHI", "WALLACE", "SECTOR 4", "HADES", "VOIGHT-KAMPFF"]
 BUS_OP = ["OFF-WORLD", "SHIMATA", "TYRELL", "PAN AM", "KOBAYASHI"]
@@ -45,7 +64,7 @@ BUS_ROUTE = ["4 CHINATOWN", "12 HADES", "9 SECTOR 4", "7 DNA ROW", "2 OFF-WORLD"
 TAXI_SIGN = ["TAXI", "CAB", "TAXI", "METRO", "TAXI"]
 VARIANTS = 32      # unterscheidbare Varianten je Fahrzeugart (Cache-Schlüssel)
 HEAD = (255, 250, 230)
-TAIL = (240, 40, 70)
+TAIL = (236, 34, 40)
 WIN = (24, 34, 58)
 CHROME = (128, 134, 148)
 
@@ -282,6 +301,46 @@ def _sedan(p, e, body, glow, rim, accent, style, livery, d):
         _rect(q, 24, -11.4, 1.4, 0.6, AMBER)
 
 
+def _classic(p, e, body, glow, rim, accent, style, d):
+    """60er-Jahre-Straßenkreuzer wie im Film: lang und flach, Heckflossen, Chrom,
+    runde Doppelscheinwerfer, Weißwandreifen - teils mit Gepäck auf dem Dach,
+    nachgerüsteten Kabeln oder einem Neonstreifen darunter."""
+    if style in (3, 4):
+        for q in (p, e):
+            _rect(q, -26, -2.6, 52, 0.9, glow)
+    _poly(p, [(-31.6, -5), (-32.4, -9.2), (-31.2, -12.4), (-27, -10.8), (-14.5, -10.9), (-10.5, -16.4),
+              (7.8, -16.8), (13.2, -11.2), (28.6, -10.4), (31.8, -8.8), (32.2, -5.2), (30, -3.6), (-30, -3.6)], body)
+    if style == 2:                                                       # Zweifarb-Dach
+        _poly(p, [(-10.5, -16.4), (7.8, -16.8), (8.6, -15.6), (-10.2, -15.4)], _mul(accent, 0.7))
+    _poly(p, [(-9.4, -11.2), (-7.4, -15.6), (7.0, -15.9), (11.4, -11.2)], WIN)
+    _rect(p, -1.2, -15.8, 1.2, 4.8, body)                               # B-Säule
+    _rect(p, -10.2, -16.8, 18.6, 0.6, _mul(rim, 0.9))
+    _rect(p, -30.5, -11.0, 17, 0.6, _mul(rim, 0.7))
+    _rect(p, 13.5, -10.9, 15, 0.6, _mul(rim, 0.6))
+    _rect(p, -30, -8.0, 60, 0.6, CHROME)                                # Zierleiste
+    _rect(p, -33.2, -6.6, 4.4, 2.2, CHROME)                             # Stoßstangen
+    _rect(p, 29.8, -6.6, 4.4, 2.2, CHROME)
+    _rect(p, -33.2, -6.6, 4.4, 0.5, _mul(rim, 1.0))
+    _rect(p, 29.8, -6.6, 4.4, 0.5, _mul(rim, 1.0))
+    _rect(p, 29.6, -9.4, 2.2, 2.4, _mul(CHROME, 0.7))                   # Kühlergrill
+    _line(p, 11.6, -11.4, 9.0, -15.0, (12, 12, 16), 0.5)                # Wischer
+    if style in (0, 1):                                                  # Gepäck auf dem Dach
+        _rect(p, -7.0, -19.2, 13.0, 2.4, _mul((96, 80, 60), 0.8 + 0.2 * style))
+        _rect(p, -6.0, -20.6, 7.0, 1.6, _mul((80, 90, 84), 0.8))
+        _line(p, -6.5, -19.4, -6.5, -16.8, (20, 20, 22), 0.4)
+        _line(p, 5.5, -19.4, 5.5, -16.8, (20, 20, 22), 0.4)
+    if style == 4:                                                       # nachgerüstete Kabel
+        _line(p, 20, -10.8, 24, -13.0, (20, 20, 24), 0.5)
+        _line(p, 24, -13.0, 27, -10.6, (20, 20, 24), 0.5)
+    for x in (-19.0, 19.0):
+        _wheel(p, x, 3.7, cover=(150, 152, 146))                        # Weißwand + Chromkappe
+        _rect(p, x - 4.3, -7.9, 8.6, 1.0, _mul(body, 0.55))             # Radlauf
+    _lamps(p, e, (31.2,), -9.4, 1.1, 1.1, HEAD)                         # runde Doppelscheinwerfer
+    _lamps(p, e, (31.2,), -7.7, 1.1, 1.1, HEAD)
+    _lamps(p, e, (-32.4,), -12.0, 0.9, 2.4, TAIL)                       # Flossenleuchten
+    _lamps(p, e, (-32.6,), -8.2, 0.8, 1.2, TAIL)
+
+
 def _metrokab(p, e, body, glow, rim, d, accent, style):
     """Metrokab: hoher Glas-Dom über kastigem Unterbau, Schachbrettband, Dachlampe."""
     for q in (p, e):
@@ -370,7 +429,7 @@ def _armadillo(p, e, body, rim, rnd, accent, livery, d):
 def _limo(p, e, body, rim, d, accent):
     """Aerial-Limousine: lang, lackschwarz, Schlitzfenster, Radgondeln vorn, Goldlinie."""
     for q in (p, e):
-        _rect(q, -36, -2.4, 64, 0.9, VIOLET)
+        _rect(q, -36, -2.4, 64, 0.9, NBLUE)
     _poly(p, [(-42, -4), (-42.4, -10.4), (-38, -12.8), (-10, -13.6), (-4, -16.6), (18, -16.6), (28, -12.6),
               (38, -10.6), (42, -8.2), (42.2, -5.2), (37, -3.6), (-40, -3.6)], body)
     _poly(p, [(-3, -15.6), (17, -15.6), (24, -13.0), (-1, -13.0)], (30, 24, 50))
@@ -480,6 +539,8 @@ def _draw_vehicle(p, e, kind, seed, rim, d=1):
         e.restore()
     elif kind == "car":
         _sedan(p, e, body, glow, rim, accent, style, livery, d)
+    elif kind == "classic":
+        _classic(p, e, body, glow, rim, accent, style, d)
     elif kind == "taxi":
         _metrokab(p, e, body, glow, rim, d, accent, style)
     elif kind == "truck":
@@ -588,7 +649,7 @@ def _draw_obstacle(p, e, kind, seed, rim):
         for q in (p, e):
             _rect(q, -3.4, -9.4, 6.8, 1.0, AMBER)   # Glut am Rand
     elif kind == "vending":
-        col = (CYAN, MAGENTA, AMBER, CRIMSON)[rnd % 4]
+        col = (CYAN, GREEN, AMBER, RED, NBLUE)[rnd % 5]
         _rect(p, -6, -20, 12, 20, (30, 32, 44))
         _rect(p, -6, -20, 12, 0.8, _mul(rim, 0.8))
         for q, a in ((p, 255), (e, 200)):
@@ -597,6 +658,48 @@ def _draw_obstacle(p, e, kind, seed, rim):
                 _rect(q, -4.5, y, 6, 1.4, _mul(col, 1.1), a)
             _rect(q, 3, -17, 2, 2, (255, 250, 230), a)
         _rect(p, -5, -5, 7, 2.4, (10, 10, 14))
+    elif kind == "dustbin":
+        # Blechmülltonne mit Rippen; Deckel schief oder daneben, Müll quillt raus
+        c = ((70, 74, 72), (58, 66, 70), (76, 70, 60))[rnd % 3]
+        _rect(p, -3.4, -8, 6.8, 8, c)
+        for y in (-6.4, -3.6, -1.2):
+            _rect(p, -3.4, y, 6.8, 0.6, _mul(c, 1.35))
+        _rect(p, -3.4, -8, 0.8, 8, _mul(rim, 0.6))
+        _rect(p, 2.6, -8, 0.8, 8, _mul(c, 0.55))
+        if rnd % 2:
+            _poly(p, [(-4.2, -8.8), (3.6, -10.6), (3.9, -9.6), (-4.0, -7.8)], _mul(c, 1.15))
+        else:
+            _ell(p, 3.0, -2.2, 6.4, 2.2, _mul(c, 1.1))                 # Deckel liegt daneben
+            for (x, y, w_, h_, col) in ((-3, -9.4, 3, 1.4, (150, 146, 132)), (0, -9.0, 3, 1.2, (40, 40, 44)),
+                                        (-1.5, -10.0, 2, 1.0, (120, 100, 70))):
+                _rect(p, x, y, w_, h_, col)
+    elif kind == "wreck":
+        # ausgeschlachteter 60er-Straßenkreuzer, aufgebockt; Länge ~48, Höhe ~12
+        paint = _mul(((70, 92, 96), (100, 80, 56), (62, 66, 84), (112, 92, 72), (88, 50, 44))[rnd % 5], 0.55)
+        s_ = 0.75
+        for x in (-15, 15):
+            _rect(p, x - 2, -3.2, 4, 3.2, (40, 38, 36))                 # Blöcke statt Räder
+        body = [(-31.6, -5), (-32.4, -9.2), (-31.2, -12.4), (-27, -10.8), (-14.5, -10.9), (-10.5, -16.4),
+                (7.8, -16.8), (13.2, -11.2), (28.6, -10.4), (31.8, -8.8), (32.2, -5.2), (30, -3.6), (-30, -3.6)]
+        flip = -1 if rnd % 2 else 1
+        _poly(p, [(x * s_ * flip, y * s_ - 0.6) for x, y in body], paint)
+        _poly(p, [(x * s_ * flip, y * s_ - 0.6) for x, y in ((-9.4, -11.2), (-7.4, -15.6), (7.0, -15.9),
+                                                             (11.4, -11.2))], (10, 12, 14))
+        _rect(p, -23, -6.6, 46, 0.5, (100, 102, 100))                    # Chromleiste
+        for (x, y, w_, h_) in ((-18, -8.4, 3, 1.4), (-6, -9.0, 2, 1.0), (9, -8.2, 4, 1.2), (16, -7.0, 2, 1.6)):
+            _rect(p, x, y, w_, h_, _mul((156, 84, 40), 0.75))              # Rost
+        hx = 21.0 * flip
+        _poly(p, [(hx - 6 * flip, -8.6), (hx + 2 * flip, -8.2), (hx + 4 * flip, -14.0)], _mul(paint, 0.85))
+        for k in range(4):                                               # Kabelgedärm
+            _line(p, hx, -8.0, hx + (k - 1.5) * 2.4 * flip, -0.4, ((30, 30, 32), (90, 40, 30), (60, 70, 50))[k % 3],
+                  0.5)
+        _rect(p, -6, -12.4, 1.0, 1.0, (150, 170, 170))                  # Scherben
+
+
+_OB_W = {"wreck": 66}
+# Zeichenmaßstab je Hindernis (Welt-Einheiten; eine Figur ist ~36 u groß). Baken, Tonnen
+# und Wracks waren neben den Leuten zu klein.
+OB_SCALE = {"barrier": 1.8, "wreck": 2.3, "barrel": 1.4, "dustbin": 1.4, "crates": 1.3, "bins": 1.25}
 
 
 def obstacle_image(kind, seed, ppu, rim):
@@ -605,8 +708,9 @@ def obstacle_image(kind, seed, ppu, rim):
     hit = _CACHE.get(key)
     if hit is not None:
         return hit
-    w = int(30 * kpx) + 6
-    hh = int(26 * kpx) + 6
+    sc = OB_SCALE.get(kind, 1.0)
+    w = int(_OB_W.get(kind, 30) * sc * kpx) + 6
+    hh = int(26 * sc * kpx) + 6
     ax, ay = w // 2, hh - 3
     img = QImage(w, hh, QImage.Format.Format_ARGB32_Premultiplied)
     img.fill(0)
@@ -615,7 +719,7 @@ def obstacle_image(kind, seed, ppu, rim):
     p, e = QPainter(img), QPainter(em)
     for q in (p, e):
         q.translate(ax, ay)
-        q.scale(kpx, kpx)
+        q.scale(kpx * sc, kpx * sc)
     _draw_obstacle(p, e, kind, seed % 5, rim)
     p.end()
     e.end()
