@@ -9,6 +9,10 @@ Runner you work your way from the outskirts to the Tyrell HQ, and you have to
 **spot, scan and deactivate replicants among the passers-by** – and live with the
 consequences of your decisions.
 
+**Also available for Android and handhelds:** a native
+[Godot 4 port](https://github.com/3p1cball-code/ShadeGunner-Android) with touch,
+gamepad and keyboard controls.
+
 Built on the `asciiplay` render path: Bayer dithering against a fixed 16-color
 palette plus a CRT chain (curvature, scanlines, shadow mask, bloom, phosphor
 persistence). The scene is composed on the CPU, figures and sound are procedural,

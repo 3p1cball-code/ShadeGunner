@@ -9,6 +9,10 @@ arbeitest du dich von den Außenbezirken bis ins Tyrell-HQ und musst
 **Replikanten unter Passanten erkennen, scannen und deaktivieren** – und mit den
 Folgen deiner Entscheidungen leben.
 
+**Auch für Android und Handhelds:** ein nativer
+[Godot-4-Port](https://github.com/3p1cball-code/ShadeGunner-Android) mit Touch-,
+Gamepad- und Tastatur-Steuerung.
+
 Gebaut auf dem `asciiplay`-Renderpfad: Bayer-Dither gegen eine feste 16-Farben-
 Palette plus CRT-Kette (Wölbung, Scanlines, Schattenmaske, Bloom, Nachleuchten).
 Die Szene wird auf der CPU komponiert, Figuren und Sound sind prozedural, die
