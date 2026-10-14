@@ -33,6 +33,7 @@ SLATE = (104, 118, 126)
 TEAL, CYAN, MAGENTA, AMBER, GREEN = C[11], C[12], C[13], C[14], C[15]
 
 W, H = config.RENDER_W, config.RENDER_H
+_NULL_IMG = QImage()        # Reflexionen aus: drawImage zeichnet nichts
 PLUS = QPainter.CompositionMode.CompositionMode_Plus
 OVER = QPainter.CompositionMode.CompositionMode_SourceOver
 
@@ -149,6 +150,19 @@ class Scene:
         self._fg_img = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
         self._nb_img = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)   # nah, leicht unscharf
         self._near = []
+        # Leistungs-Optionen (Einstellungen; wie im Android-Port). Default = volle Pracht.
+        self.opt_reflections = True
+        self.opt_rain = "viel"        # "viel" | "wenig" | "aus"
+        self.opt_fog = True
+        self.opt_fx = True
+        self.opt_quality = "hoch"     # "hoch" | "mittel" | "niedrig" (u. a. Kabel-Auflösung)
+        self._rain_applied = "viel"
+
+    def _apply_rain(self):
+        """Regenmenge gemäß opt_rain (Ausgangsmenge der Zone bleibt sonst gleich)."""
+        f = {"wenig": 0.6, "aus": 0.0}.get(self.opt_rain, 1.0)
+        self.fx.set_rain(self.city.th["rain"] * f)
+        self._rain_applied = self.opt_rain
 
     # ------------------------------------------------------------------ Zone
     def ensure_zone(self, zone_index, seed, length=None):
@@ -161,7 +175,7 @@ class Scene:
         vehicles.set_zone(zone_index)
         self.city = City(zone_index, float(length), seed)
         th = self.city.th
-        self.fx.set_rain(th["rain"])
+        self._apply_rain()
         rng = random.Random(seed + 77)
         self.bb_frames = [_billboard_frames(rng, bb[2], bb[3], rng.choice(("face", "logo", "kanji")), th["neon"])
                           for bb in self.city.billboards]
@@ -225,6 +239,8 @@ class Scene:
         cam_dx = 0.0 if self._last_cam is None else (cam - self._last_cam) * persp.PPU_NEAR * 0.6
         self._last_cam = cam
 
+        if self.opt_rain != self._rain_applied:
+            self._apply_rain()
         fx.update_rain(dt, cam_dx)
         fx.update_steam(dt)
         self._update_bikes(dt, cam)
@@ -279,7 +295,8 @@ class Scene:
         self._street(p, e, cam, t)
         self._holos(p, e, cam, t, "street")
         self._ramen(p, e, world, cam, t, dt)
-        self._shout_fx(p, e, world, cam, t)
+        if self.opt_fx:
+            self._shout_fx(p, e, world, cam, t)
         self._fog(p, 1, persp.FACADE_Y - 28, 72, cam * persp.ppu(0.0) + t * 9.0, min(1.0, fd * 0.7))
         self._spans_back(p, e, cam, t)
         self._near = []
@@ -290,26 +307,30 @@ class Scene:
             self._draw_dove(p, e, dv, cam)
         if self.dark > 0:
             p.fillRect(0, 0, W, H, QColor(2, 3, 10, int(165 * self.dark)))
-            self._glints(p, e, world, cam, boost=True)
+            if self.opt_fx:
+                self._glints(p, e, world, cam, boost=True)
             self._flashlight(p, e, world, cam)
         self._vehicle_lights(p, e, world, cam, t)
-        self._combat(p, e, world, cam, t)
-        fx.draw_steam(p, cam, city.facade.factor)
+        if self.opt_fx:
+            self._combat(p, e, world, cam, t)
+            fx.draw_steam(p, cam, city.facade.factor)
         self._patrol(p, e, world, cam, t)
         self._spinners(p, e, dt, t, near=True)
-        dry = self._span_clip(cam)
-        if dry is not None:
-            p.save()
-            p.setClipRegion(QRegion(0, 0, W, H).subtracted(dry))
-        fx.draw_rain(p, mix(th["fog"], PALE, 0.55))
-        if dry is not None:
-            p.restore()
-        self._beam_rain(p)
+        if self.opt_rain != "aus":
+            dry = self._span_clip(cam)
+            if dry is not None:
+                p.save()
+                p.setClipRegion(QRegion(0, 0, W, H).subtracted(dry))
+            fx.draw_rain(p, mix(th["fog"], PALE, 0.55))
+            if dry is not None:
+                p.restore()
+            self._beam_rain(p)
         self._fog(p, 1, H - 70, 78, cam * persp.ppu(1.15) + t * 14.0, min(1.0, fd * 0.42))
         # Ganzflächiger Nebelschleier: bei dichter Lage verschwimmt auch der Vordergrund
         # (Vordergrund liegt "näher an der Kamera", also über allem anderen).
         self._fog_img(p, city.bank, -30, H + 70, cam * persp.ppu(1.0) * 0.6 + t * 7.0, min(0.46, fd * 0.34))
-        self._wisps(p, dt, cam)
+        if self.opt_fx:
+            self._wisps(p, dt, cam)
         self._fg_e = e
         self._foreground(p, cam)
         self._fg_e = None
@@ -462,7 +483,7 @@ class Scene:
         self._fog_img(p, self.city.fog_layers[idx], y, h, scroll, opacity)
 
     def _fog_img(self, p, img, y, h, scroll, opacity):
-        if opacity <= 0.01:
+        if not self.opt_fog or opacity <= 0.01:
             return
         iw = img.width()
         off = scroll % iw
@@ -628,6 +649,8 @@ class Scene:
 
     def _fog_band(self, p):
         """Dunst über der Skyline: die Ferne versinkt stärker im Nebel als die Front."""
+        if not self.opt_fog:
+            return
         th = self.city.th
         fy = persp.FACADE_Y
         fd = getattr(self, "_fog_d", th["fog_amt"])
@@ -1098,7 +1121,7 @@ class Scene:
         lo = cam - W / persp.ppu(-0.075) * 0.5 - 120
         hi = cam + W / persp.ppu(-0.075) * 0.5 + 120
         i0 = bisect.bisect_left([w["x"] for w in ws], lo)
-        n = 28
+        n = {"hoch": 28, "mittel": 20}.get(self.opt_quality, 14)
         d_end = 2.4
         for w in ws[i0:]:
             if w["x"] > hi:
@@ -1171,7 +1194,7 @@ class Scene:
         band = 12
         k = getattr(self, "_reflk", 1.0) * (1.0 - 0.8 * self.dark)
         for refl, mode, op in ((city.facade_refl_body, OVER, min(1.0, 0.8 * k)),
-                               (city.facade_refl, PLUS, min(1.0, 0.95 * k))):
+                               (city.facade_refl, PLUS, min(1.0, 0.95 * k))) if self.opt_reflections else ():
             p.setCompositionMode(mode)
             p.setOpacity(op)
             for kb in range(0, min(refl.height(), H - fy), band):
@@ -1196,7 +1219,7 @@ class Scene:
             p.save()
             p.setClipRegion(reg)
             for refl, mode, op in ((city.facade_refl_body, OVER, min(1.0, 0.95 * k)),
-                                   (city.facade_refl, PLUS, min(1.0, 1.0 * k))):
+                                   (city.facade_refl, PLUS, min(1.0, 1.0 * k))) if self.opt_reflections else ():
                 p.setCompositionMode(mode)
                 p.setOpacity(op)
                 for kb in range(0, min(refl.height(), H - fy), band):
@@ -1222,7 +1245,7 @@ class Scene:
         # Neon-Spiegelung (live, mit Flackern) - ebenfalls weich
         p.setCompositionMode(PLUS)
         L0 = cam * fac.factor - W * 0.5 - 140
-        for s in city.visible(city.signs, city._sign_x, L0, L0 + W + 180):
+        for s in city.visible(city.signs, city._sign_x, L0, L0 + W + 180) if self.opt_reflections else ():
             x = fac.screen_x(s.L, cam)
             if x < -s.w or x > W or s.lit(t) <= 0 or (self.dark > 0.4 and s.seed % 4 != 0):
                 continue
@@ -1299,7 +1322,8 @@ class Scene:
             p.drawPolygon(QPolygonF([QPointF(x - 2, fy), QPointF(x + 2, fy),
                                      QPointF(x + 10, fy + 120), QPointF(x - 10, fy + 120)]))
         p.setCompositionMode(OVER)
-        self.fx.draw_splashes(p, mix(city.th["fog"], PALE, 0.5))
+        if self.opt_fx:
+            self.fx.draw_splashes(p, mix(city.th["fog"], PALE, 0.5))
 
     # ------------------------------------------------------------------ Überbauten
     D_FAR = config.FACADE_DEPTH
@@ -1775,6 +1799,8 @@ class Scene:
     def _mirror(self, img):
         """Wet-Street-Reflexion (progressiv scharf->weich, city.soft_reflection).
         Einmal pro Sprite gerechnet und gecacht - Rendern kostet nur ein drawImage."""
+        if not self.opt_reflections:
+            return _NULL_IMG
         key = img.cacheKey()
         r = self._refl.get(key)
         if r is None:

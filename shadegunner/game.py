@@ -63,6 +63,7 @@ class _GameMixin:
         self.settings_sel = 0
         self._settings_back = "title"
         self.audio.set_volumes(self.settings["music"], self.settings["sfx"])
+        self._apply_perf()
 
         self._gl = None
         self.renderer = None
@@ -312,8 +313,33 @@ class _GameMixin:
             i18n.set_lang(s["lang"])
         elif key == "renderer":
             s["renderer"] = "software" if s.get("renderer") != "software" else "auto"
+        elif key == "quality":
+            order = ["hoch", "mittel", "niedrig"]
+            cur = s.get("quality", "hoch")
+            i = order.index(cur) if cur in order else 0
+            s["quality"] = order[(i + (1 if d > 0 else -1)) % len(order)]
+            s.update(settings.QUALITY[s["quality"]])
+            self._apply_perf()
+        elif key in ("reflections", "fog", "fx"):
+            s[key] = not s.get(key, True)
+            self._apply_perf()
+        elif key == "rain":
+            order = ["viel", "wenig", "aus"]
+            cur = s.get("rain", "viel")
+            i = order.index(cur) if cur in order else 0
+            s["rain"] = order[(i + (1 if d > 0 else -1)) % len(order)]
+            self._apply_perf()
         settings.save(s)
         self.audio.play("target")
+
+    def _apply_perf(self):
+        """Leistungs-Optionen an die Szene geben (Qualität, Reflexionen, Regen, Nebel, FX)."""
+        sc, s = self.scene, self.settings
+        sc.opt_quality = s.get("quality", "hoch")
+        sc.opt_reflections = bool(s.get("reflections", True))
+        sc.opt_rain = s.get("rain", "viel")
+        sc.opt_fog = bool(s.get("fog", True))
+        sc.opt_fx = bool(s.get("fx", True))
 
     def _apply_scanlines(self):
         if self.renderer is not None:

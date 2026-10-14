@@ -621,6 +621,13 @@ class HUD:
     SETTING_ROWS = [
         ("music", "MUSIK", lambda s: f"{int(round(s['music'] * 100)):3d}%", "range"),
         ("sfx", "EFFEKTE", lambda s: f"{int(round(s['sfx'] * 100)):3d}%", "range"),
+        ("quality", "QUALITÄT", lambda s: {"hoch": "HOCH", "mittel": "MITTEL", "niedrig": "NIEDRIG"}.get(
+            s.get("quality", "hoch"), "HOCH"), "cycle"),
+        ("reflections", "REFLEXIONEN", lambda s: "AN" if s.get("reflections", True) else "AUS", "toggle"),
+        ("rain", "REGEN", lambda s: {"viel": "VIEL", "wenig": "WENIG", "aus": "AUS"}.get(s.get("rain", "viel"), "VIEL"),
+         "cycle"),
+        ("fog", "NEBEL", lambda s: "AN" if s.get("fog", True) else "AUS", "toggle"),
+        ("fx", "FX", lambda s: "AN" if s.get("fx", True) else "AUS", "toggle"),
         ("fullscreen", "VOLLBILD", lambda s: "AN" if s["fullscreen"] else "AUS", "toggle"),
         ("resolution", "AUFLÖSUNG", lambda s: f"{s['resolution'][0]} x {s['resolution'][1]}", "cycle"),
         ("scanlines", "SCANLINES", lambda s: "AN" if s["scanlines"] else "AUS", "toggle"),
@@ -630,29 +637,45 @@ class HUD:
         ("renderer", "RENDERER", lambda s: "GPU" if s.get("renderer") != "software" else "SOFTWARE", "toggle"),
     ]
 
+    # Geometrie der Einstellungsliste (scrollt, wenn nicht alle Zeilen passen - wie im Port)
+    SET_W, SET_ROWH, SET_GAP, SET_Y, SET_MAXROWS = 720, 42, 10, 176, 8
+
     def _settings(self, p, ui):
         self._dim(p, 200)
         s = ui.get("settings", {})
         sel = ui.get("settings_sel", 0)
         self._t(p, HW // 2, 120, "EINSTELLUNGEN", WHITE, 5, "center")
-        w, rowh, gap = 720, 42, 10
+        w, rowh, gap, maxrows = self.SET_W, self.SET_ROWH, self.SET_GAP, self.SET_MAXROWS
         x = (HW - w) // 2
-        y = 196
-        for i, (key, label, val, kind) in enumerate(self.SETTING_ROWS):
+        y = self.SET_Y
+        n = len(self.SETTING_ROWS)
+        first = max(0, min(sel - maxrows // 2, max(0, n - maxrows)))
+        last = min(first + maxrows, n)
+        if first > 0:
+            self._t(p, HW // 2, y - 22, "▲ MEHR", SLATE, 2, "center")
+        for i in range(first, last):
+            key, label, val, kind = self.SETTING_ROWS[i]
             on = i == sel
-            y0 = y + i * (rowh + gap)
+            y0 = y + (i - first) * (rowh + gap)
             self._box(p, x, y0, w, rowh, border=CYAN if on else INDIGO, alpha=225)
             self._t(p, x + 24, y0 + 13, label, WHITE if on else ASH, 3)
             self._t(p, x + w - 24, y0 + 13, val(s), CYAN if on else PALE, 3, "right")
             if kind == "range" and on:
                 self._t(p, x + w // 2 + 60, y0 + 15, "←  →", AMBER, 2, "center")
-        note = y + len(self.SETTING_ROWS) * (rowh + gap) + 8
+        if first + maxrows < n:
+            self._t(p, HW // 2, y + maxrows * (rowh + gap) - 6, "▼ MEHR", SLATE, 2, "center")
+        note = y + maxrows * (rowh + gap) + 16
         if s.get("renderer") == "software":
             self._t(p, HW // 2, note, "RENDERER WECHSELT MIT DEM NÄCHSTEN START", SLATE, 2, "center")
             note += 22
-        if self.SETTING_ROWS[sel][0] == "difficulty":
+        key = self.SETTING_ROWS[sel][0]
+        if key == "difficulty":
             self._t(p, HW // 2, note, "MEHR MENSCHEN JE VIERTEL - GILT AB DEM NÄCHSTEN EINSATZ", SLATE, 2, "center")
-        self._t(p, HW // 2, HH - 70, "▲▼  WÄHLEN      ← →  ÄNDERN      ESC / S  ZURÜCK", ASH, 2, "center")
+            note += 22
+        elif key in ("quality", "reflections", "rain", "fog", "fx"):
+            self._t(p, HW // 2, note, "WENIGER EFFEKTE = MEHR BILDER PRO SEKUNDE", SLATE, 2, "center")
+            note += 22
+        self._t(p, HW // 2, max(HH - 70, note + 2), "▲▼  WÄHLEN      ← →  ÄNDERN      ESC / S  ZURÜCK", ASH, 2, "center")
 
     def _pause(self, p):
         self._dim(p, 150)

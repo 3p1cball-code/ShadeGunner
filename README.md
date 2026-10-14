@@ -178,11 +178,17 @@ under `%LOCALAPPDATA%\shadegunner\`.
 - One 16-color palette per zone (`config.ZONE_LOOK`); the HUD keeps `noir16`.
 - The game itself is **numpy-free**; numpy is only used for sound generation
   (with a fallback without numpy).
-- **Settings** (music, effects, fullscreen, **resolution**, scanlines,
-  **language**, difficulty, renderer) live next to the save
+- **Settings** (music, effects, quality/performance, fullscreen, **resolution**,
+  scanlines, **language**, difficulty, renderer) live next to the save
   (`%APPDATA%\shadegunner\settings.json` or the XDG path). In windowed mode the
   game gets exactly the chosen resolution (centered); in fullscreen the screen
   resolution applies.
+- **Performance** (as in the [Android version](https://github.com/3p1cball-code/ShadeGunner-Android)):
+  **Quality** HIGH/MEDIUM/LOW sets **reflections** (wet street, mirror images),
+  **rain** (heavy/light/off), **fog** and **FX** (sparks, steam, shout wave,
+  wisps) in one go; afterwards every option can be toggled on its own. LOW
+  roughly halves the CPU time per frame in the dense quarters – meant for weak
+  machines and the software output.
 - Tests: `python3 tests/test_sim.py` (simulation, no GL).
 - Test cheat: type `giveall` anywhere (immortal, exit always open);
   `giveall1`–`giveall5` jumps straight into sector 1–5.

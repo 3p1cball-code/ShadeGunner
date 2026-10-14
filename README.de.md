@@ -174,11 +174,17 @@ Klang-Cache unter `%LOCALAPPDATA%\shadegunner\`.
 - Eine 16-Farben-Palette je Zone (`config.ZONE_LOOK`); das HUD behält `noir16`.
 - Das Spiel selbst ist **numpy-frei**; numpy wird nur zur Klang-Erzeugung genutzt
   (mit Fallback ohne numpy).
-- **Einstellungen** (Musik, Effekte, Vollbild, **Auflösung**, Scanlines, **Sprache**
-  Deutsch/Englisch, Schwierigkeit, Renderer) liegen
+- **Einstellungen** (Musik, Effekte, Qualität/Leistung, Vollbild, **Auflösung**,
+  Scanlines, **Sprache** Deutsch/Englisch, Schwierigkeit, Renderer) liegen
   neben dem Spielstand (`%APPDATA%\shadegunner\settings.json` bzw. XDG-Pfad). Im Fenster
   bekommt das Spiel exakt die gewählte Auflösung (zentriert); im Vollbild gilt die
   Bildschirmauflösung.
+- **Leistung** (wie in der [Android-Version](https://github.com/3p1cball-code/ShadeGunner-Android)):
+  **Qualität** HOCH/MITTEL/NIEDRIG setzt auf einen Schlag **Reflexionen** (nasse
+  Straße, Spiegelbilder), **Regen** (viel/wenig/aus), **Nebel** und **FX** (Funken,
+  Dampf, Rufwelle, Schwaden); jede Option ist danach auch einzeln umschaltbar.
+  NIEDRIG halbiert in dichten Vierteln etwa die CPU-Zeit je Bild – gedacht für
+  schwache Rechner und die Software-Ausgabe.
 - Tests: `python3 tests/test_sim.py` (Simulation, ohne GL).
 - Test-Cheat: irgendwo `giveall` tippen (unsterblich, Ausgang immer offen);
   `giveall1`–`giveall5` springt direkt in Sektor 1–5.

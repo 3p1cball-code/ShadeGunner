@@ -6,8 +6,16 @@ import os
 from .save import _base_dir
 
 # renderer: "auto" (OpenGL, sonst Software) | "software" (immer CPU)
+# quality: Sammelstufe für die Leistungs-Optionen (reflections, rain, fog, fx) - wie im
+# Android-Port; einzeln änderbar. rain: "viel" | "wenig" | "aus".
 DEFAULTS = dict(music=0.7, sfx=1.0, fullscreen=False, resolution=[1280, 720],
-                scanlines=True, renderer="auto", difficulty="normal", lang="de")
+                scanlines=True, renderer="auto", difficulty="normal", lang="de",
+                quality="hoch", reflections=True, rain="viel", fog=True, fx=True)
+QUALITY = {
+    "hoch": dict(reflections=True, rain="viel", fog=True, fx=True),
+    "mittel": dict(reflections=False, rain="viel", fog=True, fx=True),
+    "niedrig": dict(reflections=False, rain="aus", fog=False, fx=False),
+}
 
 
 def _path():
@@ -30,6 +38,10 @@ def load():
         d["difficulty"] = "normal"
     if d.get("lang") not in ("de", "en"):
         d["lang"] = "de"
+    if d.get("quality") not in QUALITY:
+        d["quality"] = "hoch"
+    if d.get("rain") not in ("viel", "wenig", "aus"):
+        d["rain"] = "viel"
     return d
 
 

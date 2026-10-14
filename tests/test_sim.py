@@ -794,6 +794,22 @@ def test_settings_rows_match_keys():
     assert "lang" in _GameMixin._SETTING_KEYS
 
 
+def test_settings_quality_presets():
+    """Leistungs-Optionen wie im Android-Port: Qualitätsstufen setzen die Einzeloptionen,
+    jede Stufe kennt alle Optionen, die Defaults sind gültig."""
+    from shadegunner import settings
+    from shadegunner.hud import HUD
+    keys = {"reflections", "rain", "fog", "fx"}
+    for q, preset in settings.QUALITY.items():
+        assert set(preset) == keys, q
+    assert settings.DEFAULTS["quality"] in settings.QUALITY
+    rows = [r[0] for r in HUD.SETTING_ROWS]
+    assert {"quality"} | keys <= set(rows)
+    d = dict(settings.DEFAULTS, quality="niedrig", **settings.QUALITY["niedrig"])
+    for r in HUD.SETTING_ROWS:
+        assert isinstance(r[2](d), str) and r[2](d), r[0]
+
+
 def test_towers_are_objects():
     for z in range(5):
         w = World(seed=7, zone_index=z)
